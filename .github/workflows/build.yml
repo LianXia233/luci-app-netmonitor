@@ -148,12 +148,14 @@ jobs:
 
           make package/$NM_PKG/compile V=s
 
-          # luci.mk 会依据 po/ 下的语言目录生成对应的
-          # luci-i18n-<pkg>-<lang> 包，这里逐个编译
-          for lang in $(ls package/$NM_PKG/po); do
-            [ "$lang" = "templates" ] && continue
-            [ -d "package/$NM_PKG/po/$lang" ] || continue
-            i18n="luci-i18n-$NM_PKG-$lang"
+          # luci.mk 会依据 po/ 下每个语言目录生成 luci-i18n-<basename>-<lang> 包：
+          # <basename> 是本包名去掉 "luci-<type>-" 前缀（本包即 netmonitor），
+          # <lang> 用的是 LUCI_LC_ALIAS 别名（zh_Hans -> zh-cn）。这些名字完全由
+          # luci.mk 内部推导，绝不要在这里手算——之前手算成 luci-i18n-luci-app-netmonitor-zh_Hans，
+          # 与真实目标名不符，被 || 吞成一条误导性的 "skip" 警告（翻译包实际是主包编译时顺带产出的）。
+          # 正确做法：直接从本次扫描生成的 tmp/.packageinfo 取出本包衍生的 i18n 包名再编译。
+          for i18n in $(grep -oE '^Package: luci-i18n-netmonitor-[A-Za-z0-9._-]+$' tmp/.packageinfo 2>/dev/null | sed 's/^Package: //'); do
+            [ -z "$i18n" ] && continue
             echo "==> building $i18n"
             make package/$i18n/compile V=s || echo "::warning::skip $i18n"
           done

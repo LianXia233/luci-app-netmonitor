@@ -753,7 +753,33 @@ find -L $(SCAN_DIR) -mindepth 1 -name Makefile | xargs grep -aHE 'call (Build/De
 
 **判据**：修复后再跑 CI，`Package 行数` 应为 **1**，`package/luci-app-netmonitor/compile`
 目标出现，编译进入 `Build package/luci-app-netmonitor` 阶段；本包 i18n 包
-`luci-i18n-netmonitor-zh_Hans` 也随之生成。
+`luci-i18n-netmonitor-zh-cn`（注意是别名 `zh-cn`，不是 `zh_Hans`）也随之生成。
+
+### 12.11 CI 的 i18n 包名必须从 `.packageinfo` 推导，不能手算
+
+**现象**：`6c074ab` 构建首次通过后，日志里出现一条误导性警告：
+
+```
+make[1]: *** No rule to make target 'package/luci-i18n-luci-app-netmonitor-zh_Hans/compile'.  Stop.
+##[warning]skip luci-i18n-luci-app-netmonitor-zh_Hans
+```
+
+构建本身成功（主包编译时会顺带产出 i18n 包），但这条警告掩盖了一个真实缺陷：
+CI 的 i18n 循环用 `luci-i18n-$NM_PKG-$lang` 拼名字，拼出来是
+`luci-i18n-luci-app-netmonitor-zh_Hans`，而 `luci.mk` 实际生成的包名是
+`luci-i18n-<basename>-<lang>`——`<basename>` 是包名去掉 `luci-<type>-` 前缀（本包即
+`netmonitor`），`<lang>` 用的是 `LUCI_LC_ALIAS` 别名（`zh_Hans` -> `zh-cn`）。两者永远对不上，
+循环里的 `|| echo warning skip` 把错误吃掉，翻译包能否进产物完全依赖“主包编译恰好也构建了 i18n”
+这一未文档化的副作用——一旦 OpenWrt 行为变化，翻译包会悄悄丢失。
+
+**修法**：i18n 循环不再手算名字，改为直接从本次扫描生成的 `tmp/.packageinfo` 取出本包衍生的
+i18n 包名再逐个 `make package/<name>/compile`：
+
+```sh
+for i18n in $(grep -oE '^Package: luci-i18n-netmonitor-[A-Za-z0-9._-]+$' tmp/.packageinfo | sed 's/^Package: //'); do
+  make package/$i18n/compile V=s || echo "::warning::skip $i18n"
+done
+```
 
 ---
 
