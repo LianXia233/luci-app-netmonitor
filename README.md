@@ -655,20 +655,28 @@ tmp/.config-package.in:31:	symbol PACKAGE_attendedsysupgrade-common is selected 
 （`CONFIG_TARGET_*` 为空）时，包索引为空，于是 `compile` 目标根本不存在——错误信息
 指向 target 缺失，而非真正的 Kconfig 失败。
 
-`attendedsysupgrade-common` 是 SDK 镜像预置构建期 Kconfig 中的系统组件，与本包无任何
-关系；环成立只是因为本包又显式声明了 `+rpcd`。
+`attendedsysupgrade-common` 是 SDK 环境的构建期组件（来自 packages feed），与本包无任何
+关系；环成立只是因为本包又显式声明了 `+rpcd`，并同时把 packages feed 拉了进来。
 
-**修法（两层）**：
+**修法（三层）**：
 
 1. `Makefile` 中不再显式声明 `+rpcd` / `+rpcd-mod-ucode` / `+ucode`。
-   `luci-base` 的 `LUCI_DEPENDS` 已包含这三项，语义无损，而环中属于本包的那条边消失。
-2. `.github/workflows/build.yml` 的 Configure 步骤做成可自愈：若 `defconfig` 日志中
-   出现 `recursive dependency detected`，则移除提供 `attendedsysupgrade-common` 的
-   包目录、清掉 `tmp/.packageinfo` 与生成的 Kconfig 后重跑一次，并始终打印本包与
-   冲突组件的 Kconfig 片段，便于后续定位。
+   `luci-base` 的 `LUCI_DEPENDS` 已包含这三项（实机 `apk info -R luci-base` 可直接验到），
+   语义无损，而环中属于本包的那条边随之消失。
+2. `.github/workflows/build.yml` 只安装 luci feed：`./scripts/feeds install -a -p luci`，
+   不再全量 `install -a`。`attendedsysupgrade-common` 由 packages feed 提供，
+   去掉该 feed 后这个组件根本不进入 Kconfig，环的另一端不存在。
+3. Configure 步骤保留自愈：检出 `recursive dependency detected` 时清理 `tmp/` 下
+   可再生的索引并重跑一次，同时打印 `.packageinfo` 与生成的 Kconfig 片段便于定位。
 
-**判据**：构建日志中 `grep -c '^CONFIG_TARGET_' .config` 必须非 0，`tmp/.packageinfo`
-必须存在。
+**关键约束：绝不能删除 `Config-build.in`**。它属于 Kconfig 输入（不是 `tmp/` 下的
+可再生生成物），删掉后构建会立刻变成另一个错误：
+
+```
+Config.in:153: glob failed: No files found "Config-build.in"
+```
+
+**判据**：构建日志中 `target symbols:` 必须非 0，`tmp/.packageinfo` 必须存在。
 
 ---
 

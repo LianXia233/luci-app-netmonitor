@@ -70,60 +70,61 @@ jobs:
           set -eu
           cd "$SDK_DIR"
           ./scripts/feeds update -a
-          # 全量安装，避免遗漏 luci-base / rpcd-mod-ucode 等依赖
-          ./scripts/feeds install -a
+
+          # 只安装 luci feed。
+          # 全量 install -a 会把 packages feed 的 attendedsysupgrade-common 一并引入，
+          # 该包在 SDK 预置 Kconfig 中会选中 rpcd，从而与本包的依赖形成递归依赖，
+          # 使 make defconfig 报错且不产出可用 .config。
+          # 本包依赖全部落在 luci feed 与 SDK 自带组件内，不需要 packages feed。
+          ./scripts/feeds install -a -p luci
+
+          echo "==> installed feeds:"
+          ls package/feeds/ 2>/dev/null || true
+          echo "==> attendedsysupgrade 相关包是否仍在引入范围:"
+          find package feeds -maxdepth 5 -name '*attendedsysupgrade*' -print 2>/dev/null || echo "    (none)"
 
       - name: Configure
         shell: sh
         run: |
           cd "$SDK_DIR"
 
-          # 保留 defconfig 输出，用于判定 Kconfig 是否报递归依赖。
-          # SDK 镜像预置的构建期 Kconfig 中 attendedsysupgrade-common 会选中 rpcd，
-          # 一旦本包同时声明 +rpcd，就形成
-          #   luci-app-netmonitor -> rpcd <- attendedsysupgrade-common -> luci-app-netmonitor
-          # 的递归依赖，conf 工具报错后不产出可用 .config，
-          # 后续 package/<name>/compile 目标随之消失。
+          # defconfig 输出保留，用于判定 Kconfig 是否报递归依赖。
+          # 注意：Config-build.in / Config.in 属于 Kconfig 输入，任何情况下都不能删除，
+          # 删掉会导致后续报 `Config.in:153: glob failed: No files found "Config-build.in"`。
           set +e
           make defconfig 2>&1 | tee /tmp/defconfig.log
           set -e
 
           if grep -q 'recursive dependency detected' /tmp/defconfig.log; then
-            echo "::warning::Kconfig recursive dependency detected, neutralizing SDK preset packages"
-            grep -n 'attendedsysupgrade' /tmp/defconfig.log | head -20 || true
+            echo "::warning::Kconfig recursive dependency detected, retrying with a clean tmp state"
+            grep -n 'recursive dependency\|depends on PACKAGE\|is selected by' /tmp/defconfig.log | head -10 || true
 
-            # 本包与该系统组件无关，移除其包定义后递归依赖的另一端不再存在
-            targets=""
-            for f in $(grep -rl 'attendedsysupgrade-common' package/ --include=Makefile 2>/dev/null || true); do
-              case "$f" in
-                package/luci-app-netmonitor/*) continue ;;
-              esac
-              echo "    removing $(dirname "$f")"
-              targets="$targets $(dirname "$f")"
-            done
-            for d in $targets; do rm -rf "$d"; done
-
-            # 丢弃由旧 package/ 生成的 Kconfig 与索引，强制重新生成
-            rm -f tmp/.packageinfo tmp/.packagedeps tmp/.config-package.in \
-                  tmp/.config-target.in Config-build.in
+            # 只清理可再生的生成物（tmp/ 下的索引与 Kconfig 产物）
+            rm -f tmp/.packageinfo tmp/.packagedeps tmp/.config-package.in tmp/.config-target.in
 
             set +e
             make defconfig 2>&1 | tee /tmp/defconfig.log
             set -e
           fi
 
-          echo "===== Kconfig context for diagnosis ====="
-          grep -n -A16 'config PACKAGE_luci-app-netmonitor' tmp/.config-package.in 2>/dev/null || echo "(symbol absent)"
-          echo "----- attendedsysupgrade references in .config-package.in -----"
-          grep -n 'attendedsysupgrade' tmp/.config-package.in 2>/dev/null | head -20 || echo "(none)"
-          echo "----- attendedsysupgrade block in Config-build.in -----"
-          grep -n -A14 'config PACKAGE_attendedsysupgrade-common' Config-build.in 2>/dev/null || echo "(none)"
-          echo "===== end context ====="
+          echo "===== 诊断：包索引中的 netmonitor 条目 ====="
+          echo "Package 行数: $(grep -c '^Package: luci-app-netmonitor$' tmp/.packageinfo 2>/dev/null || echo NA)"
+          echo "----- .packageinfo 前 8 个 Package 行 -----"
+          grep -n '^Package: ' tmp/.packageinfo 2>/dev/null | head -8 || true
+          echo "----- 本包条目的上下文 -----"
+          grep -n -A4 '^Package: luci-app-netmonitor$' tmp/.packageinfo 2>/dev/null | head -20 || true
+          echo "===== 诊断：生成的 Kconfig ====="
+          echo "config PACKAGE_luci-app-netmonitor 出现次数: $(grep -c 'config PACKAGE_luci-app-netmonitor$' tmp/.config-package.in 2>/dev/null || echo NA)"
+          echo "----- tmp/.config-package.in 第 47300-47320 行原文 -----"
+          sed -n '47300,47320p' tmp/.config-package.in 2>/dev/null || true
+          echo "----- 引用 attendedsysupgrade-common 的行 -----"
+          grep -n 'attendedsysupgrade-common' tmp/.config-package.in 2>/dev/null | head -10 || true
+          echo "===== 诊断结束 ====="
 
-          # 无论 conf 是否完整写出配置，都显式启用本包
+          # 显式启用本包（conf 成功写出时该行已存在，此处仅作保证）
           sed -i '/^CONFIG_PACKAGE_luci-app-netmonitor=/d' .config 2>/dev/null || true
           echo 'CONFIG_PACKAGE_luci-app-netmonitor=y' >> .config
-          grep -c '^CONFIG_TARGET_' .config 2>/dev/null || echo "0 target symbols (config incomplete)"
+          echo "target symbols: $(grep -c '^CONFIG_TARGET_' .config 2>/dev/null || echo 0)"
 
       - name: Build package and translations
         shell: sh
@@ -138,7 +139,7 @@ jobs:
             sed -n '1,40p' .config 2>/dev/null || true
             exit 1
           fi
-          echo "==> packageinfo entries for $PKG_NAME: $(grep -c "^Package: $PKG_NAME\$" tmp/.packageinfo || true)"
+          echo "==> packageinfo entries for luci-app-netmonitor: $(grep -c '^Package: luci-app-netmonitor$' tmp/.packageinfo || true)"
 
           make package/$PKG_NAME/compile V=s
 
