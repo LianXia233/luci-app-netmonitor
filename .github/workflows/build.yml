@@ -1,0 +1,145 @@
+name: Build luci-app-netmonitor
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PKG_NAME: luci-app-netmonitor
+
+jobs:
+  build:
+    name: ${{ matrix.format }} @ ${{ matrix.sdk }}
+    runs-on: ubuntu-latest
+    container:
+      # 官方 SDK 容器。本包 LUCI_PKGARCH=all，用 x86-64 SDK 编出的产物
+      # 可直接安装到任意架构的设备。
+      image: openwrt/sdk:${{ matrix.sdk }}
+      options: --user root
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 24.10 系列使用 opkg，产物为 .ipk
+          - sdk: x86-64-24.10.8
+            format: ipk
+          # 25.12 系列使用 apk，产物为 .apk
+          - sdk: x86-64-25.12.5
+            format: apk
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.PKG_NAME }}
+
+      - name: Locate SDK and prepare package
+        shell: sh
+        run: |
+          set -eu
+          # 不同版本的官方镜像里 SDK 根目录位置不完全一致，这里统一探测
+          SDK_DIR=""
+          for d in /builder /home/build/openwrt /openwrt /sdk /root/openwrt; do
+            if [ -x "$d/scripts/feeds" ]; then SDK_DIR="$d"; break; fi
+          done
+          if [ -z "$SDK_DIR" ]; then
+            echo "::error::cannot locate OpenWrt SDK (scripts/feeds not found)"
+            ls -la /
+            exit 1
+          fi
+          echo "SDK_DIR=$SDK_DIR" >> "$GITHUB_ENV"
+          echo "SDK located at: $SDK_DIR"
+
+          mkdir -p "$SDK_DIR/package"
+          rm -rf "$SDK_DIR/package/$PKG_NAME"
+          cp -r "$GITHUB_WORKSPACE/$PKG_NAME" "$SDK_DIR/package/$PKG_NAME"
+
+          # 源码里带的排障工作区不参与打包
+          rm -rf "$SDK_DIR/package/$PKG_NAME/tests/.tmp"
+
+      - name: Update feeds and install LuCI dependencies
+        shell: sh
+        run: |
+          set -eu
+          cd "$SDK_DIR"
+          ./scripts/feeds update -a
+          # 全量安装，避免遗漏 luci-base / rpcd-mod-ucode 等依赖
+          ./scripts/feeds install -a
+
+      - name: Configure
+        shell: sh
+        run: |
+          set -eu
+          cd "$SDK_DIR"
+          make defconfig
+
+      - name: Build package and translations
+        shell: sh
+        run: |
+          set -eu
+          cd "$SDK_DIR"
+          make package/$PKG_NAME/compile V=s
+
+          # luci.mk 会依据 po/ 下的语言目录生成对应的
+          # luci-i18n-<pkg>-<lang> 包，这里逐个编译
+          for lang in $(ls package/$PKG_NAME/po); do
+            [ "$lang" = "templates" ] && continue
+            [ -d "package/$PKG_NAME/po/$lang" ] || continue
+            i18n="luci-i18n-$PKG_NAME-$lang"
+            echo "==> building $i18n"
+            make package/$i18n/compile V=s || echo "::warning::skip $i18n"
+          done
+
+      - name: Collect artifacts
+        id: collect
+        shell: sh
+        run: |
+          set -eu
+          cd "$SDK_DIR"
+          DIST="$GITHUB_WORKSPACE/dist-${{ matrix.format }}"
+          mkdir -p "$DIST"
+          found=0
+          for f in $(find bin -type f \( -name '*.ipk' -o -name '*.apk' \) \
+                     -name '*netmonitor*' 2>/dev/null); do
+            cp "$f" "$DIST/"
+            found=1
+          done
+          if [ "$found" = "0" ]; then
+            echo "::error::no packages produced"
+            find bin -maxdepth 4 -type d | head -20
+            exit 1
+          fi
+          echo "==> packages:"
+          ls -la "$DIST"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PKG_NAME }}-${{ matrix.format }}
+          path: dist-${{ matrix.format }}/*
+          if-no-files-found: error
+
+      - name: Upload release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-${{ matrix.format }}/*
+          generate_release_notes: true
+
+  summary:
+    name: Build summary
+    runs-on: ubuntu-latest
+    needs: build
+    if: always()
+    steps:
+      - name: Report
+        run: |
+          echo "ipk job : ${{ needs.build.result }}"
+          echo "artifacts: luci-app-netmonitor-ipk / luci-app-netmonitor-apk"

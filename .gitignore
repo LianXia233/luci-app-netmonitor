@@ -1,0 +1,15 @@
+# 单元测试运行时产生的工作区（tests/test_netmon_daemon.sh 会自建）
+tests/.tmp/
+
+# 编译与编辑器产物
+*.o
+*.a
+*.ipk
+*.apk
+*.lmo
+*.swp
+*~
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

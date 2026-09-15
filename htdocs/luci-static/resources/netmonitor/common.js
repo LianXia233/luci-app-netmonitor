@@ -1,0 +1,390 @@
+/*
+ * luci-app-netmonitor 前端公共模块
+ *
+ * 提供：RPC 封装、格式化、等级判定、卡片与迷你曲线渲染、样式注入、i18n 加载。
+ * 所有页面共用，避免重复代码。
+ */
+
+'use strict';
+'require rpc';
+'require ui';
+
+var CSS_ID = 'nm-netmonitor-css';
+var I18N_DOMAIN = 'luci-app-netmonitor';
+
+function resourceUrl(path) {
+	if (typeof L !== 'undefined' && L && L.resource)
+		return L.resource(path);
+	return '/luci-static/resources/' + path;
+}
+
+/* ---------------------------------------------------------------- 资源 */
+
+function ensureCss() {
+	if (document.getElementById(CSS_ID))
+		return;
+	var link = document.createElement('link');
+	link.id = CSS_ID;
+	link.rel = 'stylesheet';
+	link.type = 'text/css';
+	link.href = resourceUrl('netmonitor/style.css');
+	document.head.appendChild(link);
+}
+
+/* 加载插件自己的 i18n domain。
+ *
+ * 不能无条件 L.require('i18n')：LuCI 的 i18n 模块在部分精简固件里并未安装
+ * （/www/luci-static/resources/i18n.js 不存在），require 会产生一个 404 请求，
+ * 而这个网络层错误无法用 catch 消除，会一直出现在浏览器控制台。
+ *
+ * 因此这里只在 LuCI 已注册 i18n 能力时才调用，否则交给 LuCI 自身的服务端
+ * 翻译机制（_() 由页面注入的翻译表提供），不额外发起请求。 */
+function loadI18n() {
+	try {
+		if (typeof L === 'undefined')
+			return Promise.resolve(null);
+		var m = L.i18n;
+		if (m && typeof m.load === 'function')
+			return Promise.resolve(m.load(I18N_DOMAIN));
+	} catch (e) {
+		/* 忽略：翻译不可用不影响功能 */
+	}
+	return Promise.resolve(null);
+}
+
+/* ---------------------------------------------------------------- RPC */
+
+function call(method, params) {
+	var keys = [];
+	var args = [];
+	if (params != null) {
+		for (var k in params) {
+			keys.push(k);
+			args.push(params[k]);
+		}
+	}
+	var fn = rpc.declare({
+		object: 'luci.netmonitor',
+		method: method,
+		params: keys
+	});
+	return fn.apply(null, args).then(function(res) {
+		if (res && res.error)
+			throw new Error(res.error);
+		return res;
+	});
+}
+
+/* rpcd 的 ucode 插件只接受字符串参数：传数组、数字或布尔字面量都会被拒绝
+ * （Invalid argument）。因此这里把所有标量序列化为字符串，
+ * 数组（如 ids）转成逗号分隔列表，布尔值转成 '1' / '0'。 */
+function strParams(o) {
+	var r = {};
+	if (o == null) return r;
+	for (var k in o) {
+		var v = o[k];
+		if (v == null) continue;
+		if (v === true) v = '1';
+		else if (v === false) v = '0';
+		if (Object.prototype.toString.call(v) === '[object Array]')
+			v = v.join(',');
+		r[k] = (typeof v === 'object') ? v : String(v);
+	}
+	return r;
+}
+
+var api = {
+	getStatus: function(withSpark) {
+		return call('get_status', withSpark ? { spark: '1' } : {});
+	},
+	getTargets: function() { return call('get_targets', {}); },
+	getHistory: function(o) { return call('get_history', strParams(o)); },
+	getStatistics: function(o) { return call('get_statistics', strParams(o)); },
+	getConfig: function() { return call('get_config', {}); },
+	setConfig: function(o) { return call('set_config', strParams(o)); },
+	addTarget: function(o) { return call('add_target', strParams(o)); },
+	updateTarget: function(o) { return call('update_target', strParams(o)); },
+	deleteTarget: function(id) { return call('delete_target', { id: String(id) }); },
+	moveTarget: function(id, dir) { return call('move_target', { id: String(id), direction: String(dir) }); },
+	copyTarget: function(id) { return call('copy_target', { id: String(id) }); },
+	batchTargets: function(ids, enabled) {
+		var idstr = (Object.prototype.toString.call(ids) === '[object Array]') ? ids.join(',') : String(ids);
+		return call('batch_targets', { ids: idstr, enabled: enabled ? '1' : '0' });
+	},
+	clearHistory: function(id) { return call('clear_history', id ? { id: String(id) } : {}); },
+	serviceStatus: function() { return call('service_status', {}); },
+	startService: function() { return call('start_service', {}); },
+	stopService: function() { return call('stop_service', {}); },
+	restartService: function() { return call('restart_service', {}); }
+};
+
+/* ---------------------------------------------------------------- 格式化 */
+
+function num(v, digits) {
+	if (v == null || isNaN(v)) return '—';
+	var p = Math.pow(10, digits == null ? 1 : digits);
+	return String(Math.round(v * p) / p);
+}
+
+function latency(v) {
+	if (v == null || isNaN(v)) return '—';
+	if (v >= 100) return String(Math.round(v));
+	return String(Math.round(v * 10) / 10);
+}
+
+function percent(v, digits) {
+	if (v == null || isNaN(v)) return '—';
+	var p = Math.pow(10, digits == null ? 1 : digits);
+	return (Math.round(v * p) / p) + '%';
+}
+
+function pad2(x) { return (x < 10 ? '0' : '') + x; }
+
+function clockOf(ts) {
+	if (!ts) return '—';
+	var d = new Date(ts * 1000);
+	return pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
+}
+
+function dateTimeOf(ts) {
+	if (!ts) return '—';
+	var d = new Date(ts * 1000);
+	return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+}
+
+function ago(ts) {
+	if (!ts) return _('Never');
+	var d = Math.floor(Date.now() / 1000) - ts;
+	if (d < 0) d = 0;
+	if (d < 5) return _('Just now');
+	if (d < 60) return _('%d seconds ago').replace('%d', d);
+	if (d < 3600) return _('%d minutes ago').replace('%d', Math.floor(d / 60));
+	if (d < 86400) return _('%d hours ago').replace('%d', Math.floor(d / 3600));
+	return _('%d days ago').replace('%d', Math.floor(d / 86400));
+}
+
+/* ---------------------------------------------------------------- 等级 */
+
+var GRADE_CLASS = {
+	excellent: 'ok',
+	good: 'ok',
+	fair: 'warn',
+	poor: 'poor',
+	severe: 'bad',
+	down: 'bad',
+	disabled: 'idle',
+	unknown: 'idle'
+};
+
+var GRADE_TEXT = {
+	excellent: 'Excellent',
+	good: 'Good',
+	fair: 'Fair',
+	poor: 'Poor',
+	severe: 'Severe',
+	down: 'Offline',
+	disabled: 'Disabled',
+	unknown: 'Unknown'
+};
+
+function gradeClass(g) {
+	return 'nm-c-' + (GRADE_CLASS[g] || 'idle');
+}
+
+function gradeText(g) {
+	return _(GRADE_TEXT[g] || 'Unknown');
+}
+
+function dotClass(g) {
+	return 'nm-dot nm-dot-' + (GRADE_CLASS[g] || 'idle');
+}
+
+function regionText(r) {
+	if (r === 'cn') return _('China');
+	if (r === 'overseas') return _('Overseas');
+	return _('Other');
+}
+
+function regionTagClass(r) {
+	if (r === 'cn') return 'nm-tag nm-tag-cn';
+	if (r === 'overseas') return 'nm-tag nm-tag-overseas';
+	return 'nm-tag nm-tag-other';
+}
+
+function errorText(e) {
+	switch (e) {
+		case 'timeout': return _('Timeout');
+		case 'dns': return _('DNS resolve failed');
+		case 'unreachable': return _('Network unreachable');
+		case 'invalid': return _('Invalid target');
+		case 'error': return _('Check failed');
+	}
+	return '';
+}
+
+/* ---------------------------------------------------------------- DOM 辅助 */
+
+function el(tag, cls, html) {
+	var e = document.createElement(tag);
+	if (cls) e.className = cls;
+	if (html != null) e.innerHTML = html;
+	return e;
+}
+
+function svgBox(svg, cls) {
+	var d = document.createElement('div');
+	if (cls) d.className = cls;
+	d.innerHTML = svg;
+	return d;
+}
+
+function clear(node) {
+	while (node && node.firstChild)
+		node.removeChild(node.firstChild);
+}
+
+function notify(msg, type) {
+	try {
+		ui.addNotification(null, E('p', {}, msg), type || 'info');
+	} catch (e) {
+		if (window.console && console.log) console.log('[netmonitor] ' + msg);
+	}
+}
+
+/* 迷你延迟曲线（SVG，无文本，可安全横向拉伸） */
+function sparkline(values, color, height) {
+	var h = height || 46;
+	var w = 100;
+	var pts = [];
+	var max = 0;
+	for (var i = 0; i < values.length; i++) {
+		if (values[i] != null) {
+			pts.push(values[i]);
+			if (values[i] > max) max = values[i];
+		} else {
+			pts.push(null);
+		}
+	}
+	if (max <= 0) max = 10;
+	var yMax = max * 1.2;
+
+	var d = '', area = '', started = false, lastX = 0;
+	for (var j = 0; j < pts.length; j++) {
+		var x = (pts.length > 1) ? (j / (pts.length - 1)) * w : 0;
+		if (pts[j] == null) { started = false; continue; }
+		var y = h - (pts[j] / yMax) * (h - 4) - 2;
+		if (!started) {
+			d += (d ? ' M' : 'M') + x.toFixed(2) + ' ' + y.toFixed(2);
+			area += (area ? ' L' : 'M') + x.toFixed(2) + ' ' + h + ' L' + x.toFixed(2) + ' ' + y.toFixed(2);
+			started = true;
+		} else {
+			d += ' L' + x.toFixed(2) + ' ' + y.toFixed(2);
+			area += ' L' + x.toFixed(2) + ' ' + y.toFixed(2);
+		}
+		lastX = x;
+	}
+
+	var col = color || '#2f6fed';
+	var svg = '<svg class="nm-spark" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" role="img">';
+	if (area)
+		svg += '<path d="' + area + ' L' + lastX.toFixed(2) + ' ' + h + ' Z" fill="' + col + '" fill-opacity="0.12"/>';
+	if (d)
+		svg += '<path d="' + d + '" fill="none" stroke="' + col + '" stroke-width="1.4" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>';
+	svg += '</svg>';
+	return svg;
+}
+
+/* 延迟卡片：名称 / 区域 / 当前延迟 / 等级 / 指标 / 迷你曲线 */
+function targetCard(t, opts) {
+	opts = opts || {};
+	var card = el('div', 'nm-target' + (t.enabled ? '' : ' is-disabled'));
+	var head = el('div', 'nm-target-head');
+	head.appendChild(el('span', dotClass(t.grade), ''));
+	var nm = el('div', '', '');
+	nm.style.minWidth = '0';
+	nm.style.flex = '1 1 auto';
+	nm.appendChild(el('div', 'nm-target-name', t.name ? String(t.name).replace(/[<>&]/g, '') : t.id));
+	nm.appendChild(el('div', 'nm-target-host', (t.host || '') + (t.last_error ? ' · ' + errorText(t.last_error) : '')));
+	head.appendChild(nm);
+	head.appendChild(el('span', regionTagClass(t.region), t.label ? t.label : regionText(t.region)));
+	card.appendChild(head);
+
+	var lat = el('div', 'nm-target-latency');
+	lat.appendChild(el('span', 'nm-latency-num ' + gradeClass(t.grade), latency(t.latency)));
+	lat.appendChild(el('span', 'nm-latency-unit', 'ms'));
+	lat.appendChild(el('span', 'nm-latency-note', gradeText(t.grade)));
+	card.appendChild(lat);
+
+	var metrics = el('div', 'nm-target-metrics');
+	function metric(label, value) {
+		var m = el('div', 'nm-metric');
+		m.appendChild(el('span', '', label));
+		m.appendChild(el('b', '', value));
+		return m;
+	}
+	metrics.appendChild(metric(_('Avg'), latency(t.avg) + ' ms'));
+	metrics.appendChild(metric(_('P95'), latency(t.p95) + ' ms'));
+	metrics.appendChild(metric(_('Loss'), percent(t.loss)));
+	metrics.appendChild(metric(_('Uptime'), percent(t.success_rate, 0)));
+	card.appendChild(metrics);
+
+	if (opts.spark !== false && t.spark && t.spark.length)
+		card.appendChild(svgBox(sparkline(t.spark, 'var(--nm-accent, #2f6fed)'), ''));
+
+	return card;
+}
+
+/* 顶部 KPI 小卡 */
+function kpiCard(title, value, sub, cls) {
+	var c = el('div', 'nm-card');
+	c.appendChild(el('div', 'nm-card-title', title));
+	c.appendChild(el('div', 'nm-card-value ' + (cls || ''), value));
+	if (sub) c.appendChild(el('div', 'nm-card-sub', sub));
+	return c;
+}
+
+/* 统一的状态横幅（服务未运行 / 数据不足 等） */
+function banner(msg, kind) {
+	var b = el('div', 'nm-card');
+	b.style.borderColor = (kind === 'warn') ? 'rgba(214,154,26,.45)' : 'var(--nm-border)';
+	b.style.display = 'flex';
+	b.style.alignItems = 'center';
+	b.style.gap = '10px';
+	b.appendChild(el('span', 'nm-dot ' + (kind === 'warn' ? 'nm-dot-warn' : 'nm-dot-idle'), ''));
+	b.appendChild(el('div', '', msg));
+	return b;
+}
+
+/* LuCI 的模块加载器要求每个模块导出一个 Class（Class.isSubclass 校验），
+ * 这里使用 Class.singleton，页面可以直接以 common.xxx() 形式调用。 */
+return Class.extend({
+	__name__: 'NetMonitor.common',
+
+	css: ensureCss,
+	loadI18n: loadI18n,
+	api: api,
+	call: call,
+	fmt: {
+		num: num,
+		latency: latency,
+		percent: percent,
+		clock: clockOf,
+		dateTime: dateTimeOf,
+		ago: ago
+	},
+	gradeClass: gradeClass,
+	gradeText: gradeText,
+	dotClass: dotClass,
+	regionText: regionText,
+	regionTagClass: regionTagClass,
+	errorText: errorText,
+	el: el,
+	svgBox: svgBox,
+	clear: clear,
+	notify: notify,
+	sparkline: sparkline,
+	targetCard: targetCard,
+	kpiCard: kpiCard,
+	banner: banner,
+	palette: ['#2f6fed', '#2e9e5b', '#8a63d2', '#e0762c', '#00a3b4', '#d69a1a', '#cf4437', '#5c6b7a']
+});
