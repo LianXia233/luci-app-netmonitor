@@ -96,7 +96,7 @@ return view.extend({
 			}
 			m.appendChild(mm(_('P95'), common.fmt.latency(x.p95) + ' ms'));
 			m.appendChild(mm(_('Loss'), common.fmt.percent(x.loss)));
-			m.appendChild(mm(_('Uptime'), common.fmt.percent(x.online_rate, 0)));
+			m.appendChild(mm(_('Availability'), common.fmt.percent(x.online_rate, 0)));
 			m.appendChild(mm(_('Abnormal'), String(x.abnormal || 0)));
 			m.appendChild(mm(_('Online'), String(x.online || 0)));
 			m.appendChild(mm(_('Total'), String(x.total || 0)));
@@ -114,7 +114,7 @@ return view.extend({
 			}
 			rings.appendChild(ring(icons.lossRing(x.loss, 44), _('Loss'), common.fmt.percent(x.loss, 1),
 				(x.loss > 5) ? 'nm-c-bad' : (x.loss > 0 ? 'nm-c-warn' : 'nm-c-ok')));
-			rings.appendChild(ring(icons.successRing(x.online_rate, 44), _('Uptime'),
+			rings.appendChild(ring(icons.successRing(x.online_rate, 44), _('Availability'),
 				common.fmt.percent(x.online_rate, 0),
 				(x.online_rate >= 99) ? 'nm-c-ok' : (x.online_rate >= 95 ? 'nm-c-warn' : 'nm-c-bad')));
 			c.appendChild(rings);
@@ -130,7 +130,7 @@ return view.extend({
 			var thead = common.el('thead', '');
 			var tbody = common.el('tbody', '');
 			var tr = common.el('tr', '');
-			[_('Name'), _('Current'), _('Average'), _('P95'), _('Loss'), _('Uptime')].forEach(function(h) {
+			[_('Name'), _('Current'), _('Average'), _('P95'), _('Loss'), _('Availability')].forEach(function(h) {
 				tr.appendChild(common.el('th', '', h));
 			});
 			thead.appendChild(tr);

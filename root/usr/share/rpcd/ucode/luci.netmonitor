@@ -269,17 +269,27 @@ function parseStats(id) {
 }
 
 /* 统一数值精度：避免把 21.460999999999999 这样的浮点尾数直接抛给前端 */
+/* 四舍五入到 d 位小数（d=1 保留 1 位，其余保留 2 位）。
+ *
+ * 注意 ucode 的 int / double 双类型：位运算 `|` 的结果是 int，而
+ * ucode 的 int / int 是「整除」——设备实测 8/10 == 0、2530/100 == 25。
+ * 原先写成 ((v * m + 0.5) | 0) / m，左右两边都是 int，商被直接截断：
+ * 所有 fx(v, 1) 退化成整数、所有 fx(v, 2) 也被截成整数，
+ * 于是「丢包率 0.8%」显示成 0、延迟的小数位全部丢失。
+ * 除数写成 double（m * 1.0）才会走浮点除法。 */
 function fx(v, d) {
 	if (v == null)
 		return null;
 	let m = (d == 1) ? 10 : 100;
-	return ((v * m + 0.5) | 0) / m;
+	return ((v * m + 0.5) | 0) / (m * 1.0);
 }
 
 function percentile(hist, total, p) {
 	if (!(total > 0))
 		return null;
-	let target = total * p / 100;
+	/* p 是整数百分比（50/95/99），除以 int 的字面量 100 会走整除；
+	 * 写成 100.0 才是浮点除法，后续的 frac 插值也才不会被截成 0/1。 */
+	let target = total * p / 100.0;
 	let cum = 0;
 	for (let i = 0; i < NB; i++) {
 		let c = hist[i];
@@ -312,6 +322,32 @@ function gradeOf(lat, loss, cfg) {
 	if (lat >= num(cfg.latency_excellent))
 		return 'good';
 	return 'excellent';
+}
+
+/* 丢包率的两种口径，整体统计与分区统计共用。
+ *
+ *   weighted —— 按包样本量加权：Σ(丢包数) / Σ(发送数)。等价于把所有
+ *               目标的探测包倒进同一个池子统计，样本多的目标自然
+ *               权重更大，这是「整体丢包率」的正确口径。ICMP 目标一次
+ *               探测发 count 个包、TCP 目标一次探测只有 1 个包，两者
+ *               样本量本来就不同，因此不能按目标等权平均。
+ *   等权     —— 每个目标一票：Σ(目标丢包率) / 目标数。目标数少时容易被
+ *               单个目标的异常值主导，只作为对照值一并给出。
+ *
+ * 没有任何采样时（sent_sum == 0）两个口径都无定义，统一取 0，
+ * 与前端一直以来的「0%」展示保持一致。 */
+function lossPair(sent_sum, recv_sum, sum, n) {
+	let lost = sent_sum - recv_sum;
+	if (lost < 0) lost = 0;
+	let w = (sent_sum > 0) ? (lost * 100.0 / sent_sum) : 0;
+	if (w < 0) w = 0;
+	if (w > 100) w = 100;
+	return {
+		loss: fx(w, 1),
+		loss_avg: fx((n > 0) ? (sum / n) : 0, 1),
+		loss_lost: lost,
+		loss_samples: sent_sum
+	};
 }
 
 /* 读取目标运行时状态：last next lat ok eno sfail sok last_ok total */
@@ -508,6 +544,10 @@ function statOf(id, cfg) {
 		last_success: s.last_success,
 		last_errno: s.last_errno,
 		total: s.total,
+		/* 包计数直接暴露给上层：整体/分区丢包率要按包样本量加权，
+		 * 不能再只拿每目标的丢包率做等权平均。 */
+		sent: st.sent,
+		recv: st.recv,
 		grade: grade
 	};
 }
@@ -571,7 +611,8 @@ const methods = {
 			let list = [];
 			let agg = {
 				total: 0, online: 0, offline: 0, disabled: 0,
-				lat_sum: 0, lat_n: 0, loss_sum: 0, loss_n: 0, down: 0
+				lat_sum: 0, lat_n: 0, loss_sum: 0, loss_n: 0, down: 0,
+				sent_sum: 0, recv_sum: 0
 			};
 
 			for (let i = 0; i < length(targets); i++) {
@@ -608,6 +649,9 @@ const methods = {
 					last_check: st.last_check,
 					last_success: st.last_success,
 					last_error: (st.streak_fail > 0 ? tpl : ''),
+					/* 每目标的包计数一并返回，前端可以自己复核加权口径。 */
+					sent: st.sent,
+					recv: st.recv,
 					grade: (t.enabled ? st.grade : 'disabled'),
 					samples: st.count
 				};
@@ -630,7 +674,10 @@ const methods = {
 				if (st.streak_fail > 0) agg.offline++; else agg.online++;
 				if (st.grade == 'down') agg.down++;
 				if (st.latency != null) { agg.lat_sum += st.latency; agg.lat_n++; }
-				if (st.count > 0) { agg.loss_sum += st.loss; agg.loss_n++; }
+				if (st.count > 0) {
+					agg.loss_sum += st.loss; agg.loss_n++;
+					agg.sent_sum += st.sent; agg.recv_sum += st.recv;
+				}
 			}
 
 			let regions = {};
@@ -638,15 +685,20 @@ const methods = {
 				let key = REGIONS[r];
 				let total = 0, online = 0, offline = 0;
 				let lat_sum = 0, lat_n = 0, loss_sum = 0, loss_n = 0, p95_sum = 0, p95_n = 0;
+				let reg_sent = 0, reg_recv = 0;
 				for (let i = 0; i < length(list); i++) {
 					if (list[i].region != key || !list[i].enabled)
 						continue;
 					total++;
 					if (list[i].status == 'online') online++; else offline++;
 					if (list[i].latency != null) { lat_sum += list[i].latency; lat_n++; }
-					if (list[i].samples > 0) { loss_sum += list[i].loss; loss_n++; }
+					if (list[i].samples > 0) {
+						loss_sum += list[i].loss; loss_n++;
+						reg_sent += list[i].sent; reg_recv += list[i].recv;
+					}
 					if (list[i].p95 != null) { p95_sum += list[i].p95; p95_n++; }
 				}
+				let rl = lossPair(reg_sent, reg_recv, loss_sum, loss_n);
 				regions[key] = {
 					total: total,
 					online: online,
@@ -654,11 +706,16 @@ const methods = {
 					abnormal: offline,
 					avg: fx((lat_n > 0) ? (lat_sum / lat_n) : null, 2),
 					p95: fx((p95_n > 0) ? (p95_sum / p95_n) : null, 2),
-					loss: fx((loss_n > 0) ? (loss_sum / loss_n) : 0, 1),
+					/* loss 为按包样本量加权的口径，loss_avg 为每目标等权的对照值。 */
+					loss: rl.loss,
+					loss_avg: rl.loss_avg,
+					loss_lost: rl.loss_lost,
+					loss_samples: rl.loss_samples,
 					online_rate: fx((total > 0) ? (online * 100.0 / total) : 0, 1)
 				};
 			}
 
+			let ol = lossPair(agg.sent_sum, agg.recv_sum, agg.loss_sum, agg.loss_n);
 			let overall = {
 				total: agg.total,
 				online: agg.online,
@@ -666,7 +723,11 @@ const methods = {
 				disabled: agg.disabled,
 				current: fx((agg.lat_n > 0) ? (agg.lat_sum / agg.lat_n) : null, 2),
 				avg: fx((agg.lat_n > 0) ? (agg.lat_sum / agg.lat_n) : null, 2),
-				loss: fx((agg.loss_n > 0) ? (agg.loss_sum / agg.loss_n) : 0, 1)
+				/* 按样本量加权的整体丢包率，loss_avg 为每目标等权的对照值。 */
+				loss: ol.loss,
+				loss_avg: ol.loss_avg,
+				loss_lost: ol.loss_lost,
+				loss_samples: ol.loss_samples
 			};
 
 			let health = 'unknown';
@@ -861,6 +922,8 @@ const methods = {
 					abnormal: o.offline,
 					avg: fx((o.avg_n > 0) ? (o.avg_sum / o.avg_n) : null, 2),
 					p95: fx((o.p95_n > 0) ? (o.p95_sum / o.p95_n) : null, 2),
+					/* 注意：这里的 loss 是「探测次数」口径（未收到回应的探测占比），
+					 * 与 get_status 中按包样本量加权的 loss 不同名不同义，勿混用。 */
 					loss: fx((o.loss_n > 0) ? (o.loss_sum / o.loss_n) : 0, 1),
 					online_rate: fx((o.total > 0) ? (o.online * 100.0 / o.total) : 0, 1)
 				});

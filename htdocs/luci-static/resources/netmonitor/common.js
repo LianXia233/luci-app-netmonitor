@@ -56,6 +56,54 @@ function loadI18n() {
 
 /* ---------------------------------------------------------------- RPC */
 
+/* ------------------------------------------------ 后端错误文案本地化
+ *
+ * rpcd 的 ucode 插件运行在 rpcd 进程里，没有 LuCI 的 i18n 运行时，因此后端
+ * 只能用 err('invalid host') 这样的英文串回报。这里在前端唯一的出口 call()
+ * 上做一次「英文原文 → 可翻译文案」的映射，各页面拿到的 e.message 就已经是
+ * 本地化后的文本，不必每个调用点各写一遍。
+ *
+ * 映射表覆盖 root/usr/share/rpcd/ucode/luci.netmonitor 里全部 err() 字面量；
+ * 没命中的串原样透出，便于定位后端新增但尚未登记的报错。 */
+var BACKEND_MSG = {
+	'invalid arguments': 'Invalid arguments',
+	'invalid id': 'Invalid ID',
+	'invalid ids': 'Invalid target selection',
+	'invalid name': 'Invalid name',
+	'invalid host': 'Invalid host',
+	'invalid region': 'Invalid region',
+	'invalid label': 'Invalid label',
+	'invalid proto': 'Invalid protocol',
+	'invalid family': 'Invalid address family',
+	'invalid interface': 'Invalid interface',
+	'invalid source': 'Invalid source address',
+	'invalid remark': 'Invalid remark',
+	'invalid direction': 'Invalid direction',
+	'target not found': 'Target not found',
+	'target id already exists': 'Target already exists',
+	'cannot create section': 'Cannot create configuration section',
+	'already at boundary': 'Already at the boundary'
+};
+
+/* 带参数的报错：后端拼成 'invalid value for <键名>'。
+ * 用显式 prefix 而不是正则，是为了让 po/gen_po.py 能静态解析出这条
+ * 前缀，从而把拼接式报错一并纳入漂移审计（正则字面量解析不出前缀）。 */
+var BACKEND_MSG_ARG = [
+	{ prefix: 'invalid value for ', msg: 'Invalid value for %s' }
+];
+
+function localizeError(msg) {
+	var s = (msg == null) ? '' : String(msg);
+	if (BACKEND_MSG[s])
+		return _(BACKEND_MSG[s]);
+	for (var i = 0; i < BACKEND_MSG_ARG.length; i++) {
+		var p = BACKEND_MSG_ARG[i].prefix;
+		if (s.indexOf(p) === 0)
+			return _(BACKEND_MSG_ARG[i].msg).replace('%s', s.slice(p.length));
+	}
+	return s;
+}
+
 function call(method, params) {
 	var keys = [];
 	var args = [];
@@ -72,7 +120,7 @@ function call(method, params) {
 	});
 	return fn.apply(null, args).then(function(res) {
 		if (res && res.error)
-			throw new Error(res.error);
+			throw new Error(localizeError(res.error));
 		return res;
 	});
 }
@@ -126,33 +174,33 @@ var api = {
  * 对象），与 LuCI 自带页面完全一致：
  *
  *     uci.get / uci.set / uci.unset   比较现值、写入候选改动
- *     uci.save()            把候选改动落盘（新增/修改/删除一并提交）；
+ *     uci.save()            把候选改动推入 rpcd 会话的「待应用更改」
+ *                           （此时只进会话，不落盘、不重载——实测
+ *                            /etc/config/netmonitor 不会立刻变化）；
  *                           与设备现值一致的项会被跳过（见 saveConfig 注释）
- *     uci.apply()           rpcd uci.apply{rollback:true, timeout:N}
- *                           真正 commit，并调用 /sbin/reload_config；
- *                           procd 的 reload trigger 随即执行
- *                           /etc/init.d/netmonitor reload。
- *                           apply 期间若设备失联，超时后自动回滚到上一份配置。
+ *
+ * 提交（落盘 + 重载）一律由 applyChanges() 走 OpenWRT 官方机制完成，
+ * 即 LuCI 自带「保存并应用」按钮背后的 ui.changes.apply()。
  *
  * 刻意不再经过插件私有的 set_config / add_target 等 RPC：那些方法虽然也是
  * 用 libuci 写同一份配置，但自成一个没有提交/回滚/触发器语义的平行通道，
  * 一旦两条通道并存，就会出现「界面已保存、系统未重载」这类难以定位的差异。
  */
 
-/* 写入一批选项后统一 save + apply。
+/* 写入一批选项并推入「待应用更改」。
  * ops: [{ conf?, sid, opt, val }]，val 为 null 表示删除该选项。
  *
  * 返回值是「真正写下去的项数」：
- *   0 表示填的值与设备现状完全一致，没有需要提交的改动，此时不调用
- *   uci.save()/uci.apply()。这一点很关键——无改动时 rpcd 的 uci.apply
- *   会直接报错（实测 ubus code 5: No data received），调用方若照常弹
- *   「保存失败」，用户看到的就是一条原始 RPC 报错；同时也能避免无意义的
- *   commit 写 Flash。
- * 与 LuCI 自带页面一致：只提交与设备现值不同的项。
+ *   0 表示填的值与设备现状完全一致，此时不入会话、也不产生待应用改动，
+ *   调用方据此直接跳过 applyChanges()。这一点很关键——没有待提交改动时
+ *   rpcd 的 uci.apply 会直接报错（实测 ubus code 5: No data received），
+ *   调用方若照常弹「保存失败」，用户看到的就是一条原始 RPC 报错；
+ *   同时也能避免无意义的写 Flash。
+ * 与 LuCI 自带页面一致：只写入与设备现值不同的项。
  *
  * 比较时把「选项不存在」与「空字符串」视为同一个状态：表单里清空的字段
  * 传上来就是 ''，而设备上该选项本来就不存在（uci.get 返回 null）。
- * 若按字面比较，这种情况会被算成一次改动，最后仍然走到 apply，
+ * 若按字面比较，这种情况会被算成一次改动，入会话后仍会走到 apply，
  * 于是又撞上同一条 NO_DATA 报错——实测就是这么暴露出来的。
  * 空值统一按「删除该选项」处理，配置文件里不会残留 option x ''。 */
 function saveConfig(ops) {
@@ -180,15 +228,16 @@ function saveConfig(ops) {
 		if (changed === 0)
 			return 0;
 
+		/* 只推入会话，不提交：提交交给 applyChanges()（官方机制）。
+		 * uci.save() 之后 LuCI 自己的「未保存的更改: N」顶部指示器
+		 * 会自动亮起（它监听 uci-loaded 事件并调 uci.changes()）。 */
 		return uci.save().then(function() {
-			return uci.apply();
-		}).then(function() {
 			return changed;
 		});
 	});
 }
 
-/* 新增一个 UCI 段、写入键值，最后统一 save + apply；resolve 新的段名。
+/* 新增一个 UCI 段、写入键值并推入「待应用更改」；resolve 新的段名。
  * 新段一定是有改动的，不需要像 saveConfig 那样先比对现值。 */
 function addSection(conf, type, values) {
 	var sid = null;
@@ -201,9 +250,46 @@ function addSection(conf, type, values) {
 		}
 		return uci.save();
 	}).then(function() {
-		return uci.apply();
-	}).then(function() {
 		return sid;
+	});
+}
+
+/* ------------------------------------------------------- 应用（官方机制）
+ *
+ * 提交「待应用更改」刻意复用 OpenWRT 自带的实现，而不是插件自己调
+ * uci.apply()：ui.changes.apply(true) 就是 LuCI「保存并应用」按钮背后那一个
+ * 函数，它 POST 到 /cgi-bin/luci/admin/uci/apply_rollback，服务端执行
+ *     ubus call uci apply { rollback: true, timeout: max(cfg.apply.rollback, 90) }
+ * 也就是说：提交配置 → /sbin/reload_config → procd 的 reload trigger
+ * 触发 /etc/init.d/netmonitor reload（SIGHUP 原地重载守护进程）。
+ *
+ * 好处是连「应用」过程的交互也一并复用官方实现，插件不必自己造一套：
+ *   * 应用期间显示官方的「正在应用配置更改… Ns」状态；
+ *   * 改动涉及当前连接接口时，弹官方的连接性变更确认；
+ *   * 应用后设备失联则在 90s 内自动回滚到上一份配置；
+ *   * 成功后按 apply_display 秒重载页面，回到干净状态。
+ *
+ * 设备实测（targets 页，暂存 label 后点页面底部官方按钮）：
+ *   /etc/config/netmonitor 出现该选项，日志出现
+ *   "configuration reload requested" + "configuration reloaded"。
+ *
+ * 若官方机制不可用（例如无 sessionid 的精简环境），退回
+ * uci.save() + uci.apply()，仍是同一条 ubus 链路、同样带回滚保护。 */
+function applyChanges() {
+	var hasOfficial = false;
+	try {
+		hasOfficial = (typeof ui !== 'undefined' && ui && ui.changes &&
+			typeof ui.changes.apply === 'function' &&
+			typeof L !== 'undefined' && L.env && L.env.sessionid);
+	} catch (e) {
+		hasOfficial = false;
+	}
+
+	if (hasOfficial)
+		return Promise.resolve(ui.changes.apply(true));
+
+	return uci.save().then(function() {
+		return uci.apply();
 	});
 }
 
@@ -242,7 +328,7 @@ function dateTimeOf(ts) {
 }
 
 function ago(ts) {
-	if (!ts) return _('Never');
+	if (!ts) return _('Never checked');
 	var d = Math.floor(Date.now() / 1000) - ts;
 	if (d < 0) d = 0;
 	if (d < 5) return _('Just now');
@@ -436,7 +522,7 @@ function targetCard(t, opts) {
 		}
 		rings.appendChild(ring(icons.lossRing(t.loss, 44), _('Loss'), percent(t.loss, 1),
 			t.loss > 5 ? 'nm-c-bad' : (t.loss > 0 ? 'nm-c-warn' : 'nm-c-ok')));
-		rings.appendChild(ring(icons.successRing(t.success_rate, 44), _('Uptime'), percent(t.success_rate, 0),
+		rings.appendChild(ring(icons.successRing(t.success_rate, 44), _('Availability'), percent(t.success_rate, 0),
 			t.success_rate >= 99 ? 'nm-c-ok' : (t.success_rate >= 95 ? 'nm-c-warn' : 'nm-c-bad')));
 		card.appendChild(rings);
 	}
@@ -451,7 +537,7 @@ function targetCard(t, opts) {
 	metrics.appendChild(metric(_('Avg'), latency(t.avg) + ' ms'));
 	metrics.appendChild(metric(_('P95'), latency(t.p95) + ' ms'));
 	metrics.appendChild(metric(_('Loss'), percent(t.loss)));
-	metrics.appendChild(metric(_('Uptime'), percent(t.success_rate, 0)));
+	metrics.appendChild(metric(_('Availability'), percent(t.success_rate, 0)));
 	card.appendChild(metrics);
 
 	if (opts.spark !== false && t.spark && t.spark.length)
@@ -507,6 +593,7 @@ return Class.extend({
 	call: call,
 	saveConfig: saveConfig,
 	addSection: addSection,
+	applyChanges: applyChanges,
 	fmt: {
 		num: num,
 		latency: latency,
@@ -521,6 +608,7 @@ return Class.extend({
 	regionText: regionText,
 	regionTagClass: regionTagClass,
 	errorText: errorText,
+	localizeError: localizeError,
 	el: el,
 	svgBox: svgBox,
 	cardIcon: cardIcon,

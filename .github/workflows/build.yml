@@ -20,8 +20,114 @@ env:
   NM_PKG: luci-app-netmonitor
 
 jobs:
+  checks:
+    # 编译前的静态检查与单元测试。之所以让 build 依赖本作业，是因为这几项
+    # 都对应过真实事故，且失败时产物本身能编出来、只是装上不能用：
+    #
+    #   * 可执行位——本仓库在 Windows 上开发，git 默认 core.filemode=false，
+    #     文件模式根本不被追踪，导致 init.d / 守护进程脚本被记为 100644。
+    #     OpenWrt 打包用 cp -fpR 保留源文件模式，装到设备上就是不可执行的
+    #     init 脚本，服务直接起不来。索引里的模式必须逐次核对。
+    #   * 翻译完整性——后端 rpcd 的 ucode 插件没有 i18n 运行时，只能返回
+    #     英文原文，须在 common.js 的映射表里登记；漏登记就静默透英文。
+    #   * 单元测试——守护进程的探测解析、字段对齐、TCP 判定等逻辑。
+    name: Static checks and unit tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.NM_PKG }}
+
+      - name: Verify executable bits
+        shell: sh
+        run: |
+          set -eu
+          cd "$GITHUB_WORKSPACE/$NM_PKG"
+          # 必须可执行的文件：带 shebang 且要被内核直接 exec 的脚本。
+          # 值取自 git 索引（而非工作区），因为最终入库的是索引里的模式。
+          fail=0
+          for f in \
+            root/etc/init.d/netmonitor \
+            root/etc/uci-defaults/luci-app-netmonitor \
+            root/usr/libexec/netmonitor/netmon-daemon.sh \
+            tests/test_netmon_daemon.sh \
+            tests/test_icons.js \
+            po/gen_po.py
+          do
+            mode=$(git ls-files -s "$f" | awk '{print $1}')
+            if [ "$mode" != "100755" ]; then
+              echo "::error file=$f::expected mode 100755 but git records ${mode:-missing} (run: git update-index --chmod=+x $f)"
+              fail=1
+            else
+              echo "ok  $mode  $f"
+            fi
+          done
+          [ "$fail" = "0" ] || exit 1
+
+      - name: Verify translation completeness
+        shell: sh
+        run: |
+          set -eu
+          cd "$GITHUB_WORKSPACE/$NM_PKG"
+          out=$(python3 po/gen_po.py)
+          echo "$out"
+          # untranslated 必须为 0：任何新增的 _('...') 都要同时补中文
+          echo "$out" | grep -q 'untranslated: 0' || {
+            echo "::error::po 存在未翻译条目（见上方 MISSING 列表）"
+            exit 1
+          }
+          # 后端 err() 字面量必须都已登记进 common.js 的映射表
+          if echo "$out" | grep -q 'UNREGISTERED backend error'; then
+            echo "::error::后端存在未登记的 err() 文案，会以英文原样透出"
+            exit 1
+          fi
+          # ZH 映射表里的重复键：后者覆盖前者，被覆盖的那条翻译静默失效
+          # （实测踩过：页签「目标管理」被总览段遗留的「目标数」顶掉）
+          if echo "$out" | grep -q 'DUPLICATE ZH key'; then
+            echo "::error::po 中文映射表存在重复键，被覆盖的翻译不会生效"
+            exit 1
+          fi
+          # 与核心语言包同名却不同译：核心覆盖插件，界面上看到的不是本插件写的词
+          # （实测踩过：目标管理页表头 _('Label') 显示成核心的「卷标」）
+          if echo "$out" | grep -q 'CORE COLLISION MISMATCH'; then
+            echo "::error::存在与核心语言包同名但不同译的 msgid（见 po/core_msgids.txt）"
+            exit 1
+          fi
+          # 生成结果必须与入库文件一致，避免「改了源码忘了重新生成 po」
+          git diff --exit-code -- po/ || {
+            echo "::error::po/ 与源码不一致，请在本地执行 python3 po/gen_po.py 后提交"
+            exit 1
+          }
+
+      - name: Run daemon unit tests
+        shell: sh
+        run: |
+          set -eu
+          cd "$GITHUB_WORKSPACE/$NM_PKG"
+          # 用 bash 跑：脚本按 POSIX sh 编写并在 busybox ash 上验证过，
+          # ubuntu 的 /bin/sh 是 dash，用 bash 更贴近开发机与设备的实际行为。
+          # 注意不能靠管道退出码判定（`cmd | tail` 取的是 tail 的状态），
+          # 所以落盘后解析汇总行。
+          bash tests/test_netmon_daemon.sh > /tmp/daemon-test.log 2>&1 || true
+          tail -40 /tmp/daemon-test.log
+          grep -qE '失败 0, 跳过 0' /tmp/daemon-test.log || {
+            echo "::error::守护进程单元测试未全部通过"
+            exit 1
+          }
+          grep -E '^通过 [0-9]+, 失败' /tmp/daemon-test.log
+
+      - name: Run icon and view assertions
+        shell: sh
+        run: |
+          set -eu
+          cd "$GITHUB_WORKSPACE/$NM_PKG"
+          node tests/test_icons.js
+
   build:
     name: ${{ matrix.format }} @ ${{ matrix.sdk }}
+    needs: checks
     runs-on: ubuntu-latest
     container:
       # 官方 SDK 容器。本包 LUCI_PKGARCH=all，用 x86-64 SDK 编出的产物

@@ -107,7 +107,7 @@ return view.extend({
 		var heads = [
 			'', _('Name'), _('Address'), _('Region'), _('Status'),
 			_('Current'), _('Average'), _('P95'), _('Loss'),
-			_('Uptime'), _('Fails'), _('Last check')
+			_('Availability'), _('Fails'), _('Last check')
 		];
 		var tr = common.el('tr', '');
 		heads.forEach(function(h) {

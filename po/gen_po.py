@@ -21,13 +21,30 @@ import sys
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RES = os.path.join(BASE, 'htdocs', 'luci-static', 'resources')
 MENU = os.path.join(BASE, 'root', 'usr', 'share', 'luci', 'menu.d', 'luci-app-netmonitor.json')
+UCODE = os.path.join(BASE, 'root', 'usr', 'share', 'rpcd', 'ucode', 'luci.netmonitor')
+COMMON_JS = os.path.join(RES, 'netmonitor', 'common.js')
 
 DOMAIN = 'luci-app-netmonitor'
 
+# 中文映射表。msgid 必须是「插件独有」的英文原文，原因见下。
+#
+# 核心语言包覆盖规则（实机实测，2026-09 于 ImmortalWrt + aurora 主题）：
+#   LuCI 把核心 base.zh-cn.lmo 与插件语言包一起加载，同名 msgid 上**核心覆盖插件**，
+#   插件自己写的那条被静默丢弃、没有任何提示。实测该规则的方式：核心 lmo 只存哈希，
+#   用 sfh_hash(本插件 msgid) 去查核心索引，命中即冲突。
+#   踩过的具体例子：目标管理页表头 _('Label') 本插件译「标签」，
+#   设备上显示「卷标」——那正是核心 "Label" 的译文（核心用它指分区卷标）。
+#
+# 因此新增文案时遵守两条：
+#   1) 含义有歧义的通用词（Label / Status / Total 之类）不要直接用，
+#      换成插件语境明确的说法（表头用 'Custom label' 而不是 'Label'）；
+#   2) 已被核心占用、但核心译文在本插件语境下同样可用的（如 Interval / Enabled），
+#      本表取值直接对齐核心，保证「无论哪条生效，界面都是同一个词」。
+# 冲突面用工作区的 _audit_i18n_collide.py 复查（需要设备上的 base.zh-cn.lmo）。
 ZH = {
     # 菜单
     'Network Monitor': '网络质量监控',
-    'Overview': '总览',
+    'Overview': '概览',
     'Realtime': '实时监控',
     'Latency Charts': '延迟曲线',
     'CN / Global': '国内 / 国外',
@@ -36,7 +53,7 @@ ZH = {
     'Settings': '设置',
 
     # 通用 / 状态
-    'Never': '从未',
+    'Never checked': '从未检测',
     'Just now': '刚刚',
     'China': '国内',
     'Overseas': '国外',
@@ -51,7 +68,7 @@ ZH = {
     'P50': 'P50',
     'P95': 'P95',
     'Loss': '丢包',
-    'Uptime': '在线率',
+    'Availability': '在线率',
     'Current': '当前',
     'Max': '最大',
     'Min': '最小',
@@ -64,7 +81,7 @@ ZH = {
     'Samples': '样本数',
     'Statistics': '统计',
     'Updated': '更新时间',
-    'Interval': '检测间隔',
+    'Interval': '间隔',
     'UI refresh': '界面刷新',
     'Actions': '操作',
 
@@ -107,7 +124,6 @@ ZH = {
     'One or more targets failed consecutively beyond the threshold.': '一个或多个目标连续失败次数已超过阈值。',
     'Current latency': '当前延迟',
     'Packet loss': '丢包率',
-    'Targets': '目标数',
     'Background service is not running. Monitoring is stopped.': '后台服务未运行，监控已停止。',
     'Background service did not update data recently. Check the service status.': '后台服务近期未更新数据，请检查服务状态。',
     'No enabled targets. Go to Targets to add one.': '没有已启用的目标，请到「目标管理」添加。',
@@ -130,7 +146,6 @@ ZH = {
 
     # 动态 SVG 图标卡片
     'Success rate': '成功率',
-    'Samples': '样本数',
     'Probe settings': '探测设置',
     'Check interval': '检测间隔',
     'Probe timeout': '探测超时',
@@ -199,7 +214,6 @@ ZH = {
     'Higher values give better loss statistics but cost more time.': '数值越大丢包统计越准，但耗时更长。',
     'Concurrent probes': '并发检测数量',
     'Maximum number of targets probed in parallel.': '同时进行探测的目标数量上限。',
-    'Address family': '地址族',
     'Auto': '自动',
     'IPv4 only': '仅 IPv4',
     'IPv6 only': '仅 IPv6',
@@ -254,11 +268,9 @@ ZH = {
     'Disable selected': '批量禁用',
     'Refresh': '刷新',
     'Global interval': '全局间隔',
-    'Timeout': '超时',
-    'Label': '标签',
     'Family': '地址族',
     'Interface': '接口',
-    'Enabled': '启用',
+    'Enabled': '已启用',
     'Interval and timeout set to 0 inherit the global settings.': '间隔与超时填 0 表示继承全局设置。',
     'IPv4': 'IPv4',
     'IPv6': 'IPv6',
@@ -273,7 +285,6 @@ ZH = {
     'Check interval (s, 0 = global)': '检测间隔（秒，0 = 跟随全局）',
     'Timeout (s, 0 = global)': '超时（秒，0 = 跟随全局）',
     'Interface (optional)': '接口（可选）',
-    'Source address (optional)': '源地址（可选）',
     'Remark': '备注',
     'Cancel': '取消',
     'Save': '保存',
@@ -332,6 +343,37 @@ ZH = {
     'Please enter a whole number': '请填写整数',
     'Allowed range': '允许范围',
     '(current)': '（当前值）',
+
+    # ------------------------------------------------- 后端 err() 的前端兜底翻译
+    # rpcd 的 ucode 插件没有 LuCI i18n 运行时，只能返回英文原文，
+    # 由 common.js 的 localizeError() 在浏览器侧查表翻译（见该函数注释）。
+    # 新增后端 err() 字面量时，务必同步在此登记，否则会以英文原样透出。
+    'Invalid arguments': '参数无效',
+    'Invalid ID': '标识无效',
+    'Invalid target selection': '目标选择无效',
+    'Invalid name': '名称无效',
+    'Invalid host': '主机无效',
+    'Invalid region': '区域无效',
+    'Invalid label': '标签无效',
+    'Invalid protocol': '协议无效',
+    'Invalid address family': '地址族无效',
+    'Invalid interface': '接口无效',
+    'Invalid source address': '源地址无效',
+    'Invalid remark': '备注无效',
+    'Invalid direction': '方向无效',
+    'Target not found': '目标不存在',
+    'Target already exists': '目标已存在',
+    'Cannot create configuration section': '无法创建配置节',
+    'Already at the boundary': '已在边界位置',
+    'Invalid value for %s': '%s 的值无效',
+
+    # ------------------------------------------------------- 无障碍 / 图标标签
+    'Icon': '图标',
+
+    # --------------------------------------------------- 加权丢包率（总览页）
+    'Weighted loss': '加权丢包率',
+    'Lost packets': '丢包数',
+    'Unweighted': '未加权',
 }
 
 # 手工补充（来自数组常量 / 动态拼接，正则无法直接提取）
@@ -344,6 +386,128 @@ EXTRA = [
 ]
 
 PAT = re.compile(r"_\('((?:[^'\\]|\\.)*)'\)")
+
+# 映射表取值模式：'key': 'value'（精确表） / msg: 'value'（带参表）
+PAIR = re.compile(r"'([^']+)':\s*'((?:[^'\\]|\\.)*)'")
+MSGVAL = re.compile(r"\bmsg:\s*'((?:[^'\\]|\\.)*)'")
+PREFIXVAL = re.compile(r"\bprefix:\s*'((?:[^'\\]|\\.)*)'")
+
+
+def _map_block(src, var, term):
+    """截出 common.js 里某个映射表的源码块；找不到返回 None。"""
+    i = src.find('var %s' % var)
+    if i < 0:
+        sys.stderr.write('warn: 未找到 %s 映射表\n' % var)
+        return None
+    j = src.find(term, i)
+    if j < 0:
+        sys.stderr.write('warn: %s 映射表未正常闭合\n' % var)
+        return None
+    return src[i:j]
+
+
+def backend_map():
+    """解析 common.js 的后端错误映射表 → (待翻译文案, 精确键, 前缀键)。
+
+    这些文案是以变量形式传给 _() 的（_(BACKEND_MSG[s])），PAT 抓不到字面量，
+    必须直接解析映射表，否则不会进 po，运行时 _() 查表落空、回落英文。
+    映射表因此是唯一事实来源：后端新增 err() 后登记进表即可，这里自动跟上。"""
+    if not os.path.isfile(COMMON_JS):
+        sys.stderr.write('warn: 找不到 %s，后端错误文案未纳入翻译\n' % COMMON_JS)
+        return [], set(), set()
+
+    with io.open(COMMON_JS, encoding='utf-8') as fh:
+        src = fh.read()
+
+    strings, keys, prefixes = [], set(), set()
+
+    blk = _map_block(src, 'BACKEND_MSG', '\n};')
+    if blk is not None:
+        for k, v in PAIR.findall(blk):
+            keys.add(k)
+            strings.append(v)
+
+    blk = _map_block(src, 'BACKEND_MSG_ARG', '\n];')
+    if blk is not None:
+        strings.extend(MSGVAL.findall(blk))
+        prefixes.update(PREFIXVAL.findall(blk))
+
+    if not strings:
+        sys.stderr.write('warn: %s 未解析出任何后端错误文案\n' % COMMON_JS)
+    return strings, keys, prefixes
+
+
+def backend_keys():
+    """审计用键集合 = 精确键 ∪ 前缀键（覆盖 err('前缀' + k) 这类拼接报错）。"""
+    _s, keys, prefixes = backend_map()
+    return keys | prefixes
+
+
+def audit_duplicate_keys():
+    """自检 ZH 字典字面量里是否有同名键。
+
+    Python 字典字面量出现同名键时「后者覆盖前者」，且不给任何提示。
+    实测踩过一次：总览段另写了一条 'Targets': '目标数'，把菜单页签的
+    '目标管理' 静默顶掉，页签显示成「目标数」。重复键在字典构造时就已
+    合并，单看 ZH 本身查不出来，必须回读本文件源码逐键比对行号。"""
+    import ast
+    with io.open(os.path.abspath(__file__), encoding='utf-8') as fh:
+        tree = ast.parse(fh.read())
+
+    node = None
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Assign):
+            for t in n.targets:
+                if (isinstance(t, ast.Name) and t.id == 'ZH'
+                        and isinstance(n.value, ast.Dict)):
+                    node = n.value
+    if node is None:
+        sys.stdout.write('  WARN: 未解析出 ZH 字典字面量，重复键检查被跳过\n')
+        return []
+
+    where = {}
+    for k in node.keys:
+        if isinstance(k, ast.Constant) and isinstance(k.value, str):
+            where.setdefault(k.value, []).append(k.lineno)
+
+    dups = sorted((k, v) for k, v in where.items() if len(v) > 1)
+    for k, lns in dups:
+        sys.stdout.write('  DUPLICATE ZH key: %r 在 L%s（仅最后一条生效）\n'
+                         % (k, ', L'.join(str(x) for x in lns)))
+    return dups
+
+
+def audit_core_collisions(strings):
+    """校验「与核心语言包同名」的 msgid 本插件取值是否也与核心一致。
+
+    核心 base 语言包与插件语言包同名时，核心覆盖插件、插件的译文被静默丢弃，
+    因此这类 msgid 的取值必须与核心一致（见 po/core_msgids.txt 与 ZH 表头说明）。
+    清单外的通用词（核心也有、但本插件此前没用过的）检测不到，
+    新增文案后需用工作区的 _audit_i18n_collide.py 复查并重新生成本清单。"""
+    path = os.path.join(BASE, 'po', 'core_msgids.txt')
+    if not os.path.isfile(path):
+        sys.stdout.write('  WARN: 缺少 po/core_msgids.txt，同名冲突检查被跳过\n')
+        return []
+
+    core = {}
+    with io.open(path, encoding='utf-8') as fh:
+        for ln in fh:
+            ln = ln.rstrip('\n')
+            if not ln or ln.startswith('#'):
+                continue
+            parts = ln.split('\t')
+            if len(parts) != 2:
+                continue
+            core[parts[0]] = parts[1]
+
+    bad = []
+    for s in strings:
+        if s in core and ZH.get(s, '') != core[s]:
+            bad.append((s, ZH.get(s, ''), core[s]))
+    for msgid, mine, cval in bad:
+        sys.stdout.write('  CORE COLLISION MISMATCH: %r 本插件=%r 核心=%r\n'
+                         % (msgid, mine, cval))
+    return bad
 
 
 def collect():
@@ -375,6 +539,10 @@ def collect():
     for s in EXTRA:
         add(s)
 
+    # 以变量形式传给 _() 的后端错误文案（见 backend_map 注释）
+    for s in backend_map()[0]:
+        add(s)
+
     return strings
 
 
@@ -390,7 +558,7 @@ def write_po(path, strings, translated):
         '#\n'
         'msgid ""\n'
         'msgstr ""\n'
-        '"Project-Id-Version: luci-app-netmonitor 1.1.0\\n"\n'
+        '"Project-Id-Version: luci-app-netmonitor 1.2.0\\n"\n'
         '"Language: %s\\n"\n'
         '"MIME-Version: 1.0\\n"\n'
         '"Content-Type: text/plain; charset=UTF-8\\n"\n'
@@ -423,6 +591,27 @@ def main():
     sys.stdout.write('strings: %d, untranslated: %d\n' % (len(strings), len(missing)))
     for s in missing:
         sys.stdout.write('  MISSING: %s\n' % s)
+
+    # 漂移审计：ucode 后端新增 err('...') 却忘了登记进 common.js 的映射表时，
+    # 该英文串会绕过翻译直接透出，这里提前告警。
+    known = backend_keys()
+    if os.path.isfile(UCODE):
+        with io.open(UCODE, encoding='utf-8') as fh:
+            usrc = fh.read()
+        unregistered = sorted(set(re.findall(r"err\('([^']*)'", usrc)) - known)
+        for s in unregistered:
+            sys.stdout.write('  UNREGISTERED backend error: %s\n' % s)
+        if unregistered:
+            sys.stdout.write('  => 需在 common.js 的 BACKEND_MSG 中登记并补中文\n')
+
+    # ZH 字典自检：重复键会让被覆盖的那条翻译静默失效，且不会出现在 MISSING 里
+    if audit_duplicate_keys():
+        sys.stdout.write('  => ZH 字典存在重复键，请删掉被覆盖的那条\n')
+
+    # 与核心语言包同名却不同译：界面上看到的不是本插件写的那个词
+    if audit_core_collisions(strings):
+        sys.stdout.write('  => 这些 msgid 请改用插件独有说法，或把译文对齐核心\n')
+
     return 0
 
 

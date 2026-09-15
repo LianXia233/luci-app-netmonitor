@@ -38,11 +38,13 @@
  * 读取与写入刻意走不同但各自更合适的接口：
  *   * 读取用 get_config RPC：它按后端 DEFAULTS 补齐缺省值并做 clamp，
  *     是默认值语义的唯一权威，界面因此永远显示「设备实际生效的值」；
- *   * 写入用 OpenWrt 原生 uci 事务（uci.set → uci.save() → uci.apply()），
- *     与 LuCI 自带页面完全一致：原子提交、失败回滚、并由 /sbin/reload_config
- *     触发 procd 的 reload trigger 去重载 /etc/init.d/netmonitor。
- *   * 保存成功后立即回读 get_config 并用设备返回的真值重绘输入框，
- *     所以界面上看到的一律是「已经落盘生效的值」，不是用户刚敲进去的值。
+ *   * 写入用 OpenWrt 原生 uci 事务（uci.set → uci.save() → 推入 rpcd 会话的
+ *     「待应用更改」），应用则复用 LuCI「保存并应用」按钮背后的
+ *     ui.changes.apply（见 common.applyChanges）：提交配置 →
+ *     /sbin/reload_config → procd 的 reload trigger 重载
+ *     /etc/init.d/netmonitor，应用后设备失联会自动回滚。
+ *   * 保存成功后界面不再自己回读写回值：官方 apply 完成时 LuCI 会重载页面，
+ *     重载后看到的一律是「已经落盘生效的值」，不是用户刚敲进去的值。
  */
 
 'use strict';
@@ -321,7 +323,7 @@ return view.extend({
 				common.clear(svcIcon);
 				svcIcon.appendChild(common.svgBox(icons.service(!!d.running, 30), ''));
 				svcText.textContent = (d.running ? _('Service running') : _('Service stopped')) +
-					' · ' + _('Last update') + ': ' + (d.tick ? common.fmt.ago(d.tick) : _('Never'));
+					' · ' + _('Last update') + ': ' + (d.tick ? common.fmt.ago(d.tick) : _('Never checked'));
 			}).catch(function() {
 				common.clear(svcIcon);
 				svcIcon.appendChild(common.svgBox(icons.service(false, 30), ''));
@@ -557,23 +559,31 @@ return view.extend({
 			if (bad) { common.notify(bad, 'error'); return; }
 			btnSave.disabled = true;
 
-			/* 走 OpenWrt 原生保存/应用链路：
-			 *   uci.set   → 写入会话候选改动
-			 *   uci.save()→ 候选改动静默落盘
-			 *   uci.apply()→ commit + /sbin/reload_config
-			 *                + procd reload trigger 重载服务，失败自动回滚 */
+			/* 保存与应用都复用 OpenWRT 自带的机制，与 targets 编辑弹窗一致：
+			 *   写入 common.saveConfig → 原生 uci 事务，推入 rpcd 会话的待应用更改
+			 *   应用 common.applyChanges → LuCI「保存并应用」按钮背后的
+			 *        ui.changes.apply(true)（POST admin/uci/apply_rollback）
+			 * 插件不再自己调用 uci.apply()，全插件只剩这一条提交通道；
+			 * 应用期间的状态提示、连接性变更确认、失联自动回滚、成功后重载页面
+			 * 都由 LuCI 负责，不再自建。 */
 			var ops = [];
 			for (var k in v)
 				ops.push({ sid: 'global', opt: k, val: v[k] });
 
 			common.saveConfig(ops).then(function(changed) {
-				common.notify(changed === 0 ? _('No changes to save') : _('Saved'));
-				return common.api.getConfig();
-			}).then(function(c) {
-				applyConfig(c || {});
+				/* 无改动时不能调用 applyChanges()：没有待提交改动时 rpcd
+				 * 的 uci.apply 会直接报错（实测 ubus code 5）。 */
+				if (changed === 0) {
+					common.notify(_('No changes to save'));
+					return;
+				}
+				return common.applyChanges();
 			}).catch(function(e) {
 				common.notify(String(e.message || e), 'error');
-			}).then(function() { markDirty(); });
+			}).then(function() {
+				btnSave.disabled = false;
+				markDirty();
+			});
 		});
 
 		btnDiscard.addEventListener('click', function() {

@@ -69,11 +69,14 @@ LuCI Web UI (HTML5 + CSS3 + 原生 JS + SVG)
 luci-app-netmonitor/
 ├── Makefile                                   # 包定义（依赖全为主线组件）
 ├── LICENSE
+├── CHANGELOG.md                               # 版本变更记录
 ├── README.md
 ├── po/
 │   ├── gen_po.py                              # 翻译提取/生成脚本（开发用，不打包）
+│   ├── core_msgids.txt                        # 与核心语言包同名的 msgid 及核心译文（见 12.21）
 │   ├── templates/luci-app-netmonitor.pot
 │   └── zh_Hans/luci-app-netmonitor.po
+├── .github/workflows/build.yml                # CI：静态检查 + 单元测试 + SDK 构建
 ├── root/
 │   ├── etc/
 │   │   ├── init.d/netmonitor                  # procd 服务脚本
@@ -87,7 +90,7 @@ luci-app-netmonitor/
 │               ├── acl.d/luci-app-netmonitor.json        # RPC 权限
 │               └── ucode/luci.netmonitor                 # RPC 后端
 ├── tests/
-│   ├── test_netmon_daemon.sh                  # 守护进程单元测试（32 条断言）
+│   ├── test_netmon_daemon.sh                  # 守护进程单元测试（94 条断言）
 │   └── test_icons.js                          # 动态 SVG 图标自检（442 条断言）
 └── htdocs/luci-static/resources/
     ├── netmonitor/
@@ -1060,6 +1063,178 @@ procd 随后再来删就撞上 ENOENT，于是记成错误。
 
 ---
 
+### 12.18 ucode 的 `int / int` 是整除：小数位被无声吃掉
+
+**现象**：总览页丢包率卡片显示 `0%`，同一页却写着「丢包数: 1」、
+样本量 124 —— 真值 0.8% 被显示成 0；延迟全部只剩整数位。
+
+**根因**：ucode 有**独立的 `int` 类型**，且 **`int / int` 走整除**。
+设备上验算：
+
+```sh
+ucode -e 'print(8/10, " ", 2530/100, " ", 8.0/10)'
+# 0 25 0.8        <- 前两个是整除，第三个才是除法
+```
+
+格式化函数里写的是 `((v * m + 0.5) | 0) / m`。按位或 `|` 的结果是 `int`，
+加上 `m` 本身也是 `int`，两侧皆 int → 商被截断。于是 `fx(v, 1)` 退化为整数、
+`fx(v, 2)` 也只到整数位，25 处调用一起失效。同类问题还在百分位计算里：
+`total * p / 100` 的 `100` 是 int 字面量，P95 被截到桶边界。
+
+**修法**：把除数写成 double，让除法走浮点。
+
+```js
+function fx(v, d) {
+	if (v == null) return null;
+	let m = (d == 1) ? 10 : 100;
+	return ((v * m + 0.5) | 0) / (m * 1.0);      // 除数必须是 double
+}
+let target = total * p / 100.0;                   // 整数百分比也要除以 100.0
+```
+
+**判据**：`ubus call luci.netmonitor get_status` 返回 `loss: 0.7`、
+`current: 23.56`、`p95: 46.5`；页面上出现带小数位的百分比
+（实机验证脚本断言卡片主值里至少有一个含 `.`）。
+
+---
+
+### 12.19 Windows 开发机上 `core.filemode=false`：脚本可执行位不入库
+
+**现象**：设备上 `/etc/init.d/netmonitor status` 报权限错误、服务不自启；
+把 SDK 打出的包解开看，init 脚本是 `644`。
+
+**根因**：本仓库在 Windows 上开发，git 默认 `core.filemode=false`，
+**文件模式根本不被追踪**，`git add` 一律记成 `100644`。而 OpenWrt 打包用
+`cp -fpR` 保留源文件模式 —— 入库是 644，装到设备上就是不可执行的 init 脚本。
+
+**修法**：`git update-index --chmod=+x <file>` **只改索引**、不动工作区。
+刻意不用「改工作区权限再 `git add`」那一套：工作区权限在不同机器/复制方式下
+容易丢，且 `git add` 在 `core.filemode=false` 时照样不会记录。
+CI 里直接用 `git ls-files -s` 读索引模式并核对必须为 `100755`。
+
+必须可执行的 6 个文件（带 shebang、会被直接 exec）：
+
+```
+root/etc/init.d/netmonitor
+root/etc/uci-defaults/luci-app-netmonitor
+root/usr/libexec/netmonitor/netmon-daemon.sh
+tests/test_netmon_daemon.sh
+tests/test_icons.js
+po/gen_po.py
+```
+
+---
+
+### 12.20 设备上没有 `po2lmo`：自行编译 `.lmo`
+
+**现象**：改完 `po/zh_Hans/*.po` 直接部署，界面还是旧译文。
+
+**根因**：运行时读的是 `/usr/lib/lua/luci/i18n/<域>.zh-cn.lmo`（编译后的 gettext 域），
+`.po` 只参与构建期。而 `po2lmo` 属于 `luci-base` 的**宿主工具**，
+测试设备上并没有（`which po2lmo` 为空）。
+
+**做法**：按上游 `modules/luci-base/src/po2lmo.c`（写入端）与
+`src/lib/lmo.c`（读取端）自行实现一个纯 Python 编译器，放在开发工作区、不进包。
+格式要点（全部**大端**）：
+
+- **数据区**：每条 msgstr 的 UTF-8 字节，然后补 0 到 4 字节对齐，
+  `pad = (4 - len % 4) % 4`；offset 累加的是「长度 + 填充」。
+- **索引区**：N 条 × 16 字节 `key_id, val_id, offset, length`，
+  按 `key_id` 升序，`val_id = plural_num + 1`（非复数即 1），
+  `offset` 是**文件绝对偏移**。
+- **末尾 4 字节**：索引区的起始偏移。
+- 键与值都用 Paul Hsieh 的 `sfh_hash`；`msgstr` 为空、
+  或 `sfh_hash(key) == sfh_hash(val)` 的条目跳过。
+
+**可信度怎么来的**：拿入库的 po 重编译，与设备现存的 `.lmo`
+**逐字节比对一致**（v1.0.1 的 7 个提交全部一致），说明实现与官方一致；
+再用它编译新版 po 覆盖上去。
+
+**判据**：编译工具自检「回读全部一致」；部署后本地文件与设备文件 md5 相同。
+
+---
+
+### 12.21 中文映射表的两种静默失效：重复键与核心语言包同名覆盖
+
+这两种都不会报错、不会出现在 `untranslated` 里，只能靠专门的审计发现。
+
+**（一）映射表重复键**
+
+- **现象**：目标管理页的页签显示「目标数」，应为「目标管理」。
+- **根因**：`po/gen_po.py` 的中文映射表在总览段又写了一条
+  `'Targets': '目标数'`，与菜单段的 `'Targets': '目标管理'` 同名。
+  Python 字典字面量里**后者覆盖前者且不给任何提示**，被覆盖的那条翻译
+  静默失效 —— 而 `collect()` 只会把「没有译文」的条目报成 untranslated，
+  重复键属于「有译文但取的不是你以为的那条」，查不出来。
+- **修法**：删掉重复键；并让 `gen_po.py` 用 `ast` **回读自己的源码**
+  （字典构造时重复键已合并，单看 ZH 变量查不出来），把重复键及其行号打印出来，
+  CI 命中 `DUPLICATE ZH key` 即失败。
+
+**（二）核心语言包同名覆盖**
+
+- **现象**：目标管理页表头显示「**卷标**」（本插件写的是「标签」）；
+  在线率的百分比被标成「运行时间」（`Uptime`）；
+  从无数据的时间显示成「**禁用**」（`Never`，本意「从未检测」）。
+- **根因**：LuCI 把核心 `base.zh-cn.lmo` 与插件语言包一起加载，
+  **同名 msgid 上核心覆盖插件**，插件自己写的那条被静默丢弃。
+  核心的 `Label` 指分区卷标、`Uptime` 指运行时间、`Never` 是「禁用」。
+- **排查手法**：`.lmo` 只存哈希、无法反查 msgid，于是**反向算** ——
+  对本插件每个 msgid 求 `sfh_hash`，去核心语言包的索引里查，命中即同名，
+  再比两条译文是否一致。
+- **修法**分两类：
+  - 核心译文在本插件语境下不合适 → 换成插件语境明确的新 msgid：
+    `'Label'` → `'Custom label'`、`'Uptime'` → `'Availability'`、
+    `'Never'` → `'Never checked'`；
+  - 核心译文同样可用 → 本插件取值**直接对齐核心**：
+    `Interval` / `Overview` / `Enabled`。
+- **护栏**：把「核心语言包也有、且本插件在用」的 26 个 msgid 及其核心译文
+  冻结进 `po/core_msgids.txt`，`gen_po.py` 校验「同名必须同译」，
+  CI 命中 `CORE COLLISION MISMATCH` 即失败。清单外的通用词检测不到 ——
+  新增 `_('...')` 文案后需用工作区的冲突审计脚本复查并重新生成清单。
+- **判据**：实机断言「在线率」出现且「运行时间」不出现；
+  目标管理页「自定义标签」出现且「卷标」不出现。
+
+---
+
+### 12.22 后端 `err()` 文案必须登记进前端映射表
+
+**现象**：后端校验失败时，界面上弹出的是英文原文（如 `invalid host`）。
+
+**根因**：rpcd 的 ucode 插件**没有 LuCI i18n 运行时**，只能返回英文串。
+前端把它交给 `_()` 时用的是**变量形式**（`_(BACKEND_MSG[s])`），
+`po/gen_po.py` 的正则抓不到字面量 → 不进 po → 运行时查表落空 → 回落英文。
+
+**修法**：
+
+- `po/gen_po.py` 直接解析 `common.js` 里的映射表作为文案来源
+  （映射表即唯一事实来源，后端登记一条，翻译侧自动跟上）；
+- 前端在 RPC 的**唯一出口** `common.localizeError()` 统一查表，
+  并支持 `invalid value for <键名>` 这类前缀拼接报错；
+- `gen_po.py` 把 ucode 后端全部 `err('...')` 字面量与映射表键比对，
+  未登记即打印 `UNREGISTERED backend error`，CI 失败。
+
+**约束**：后端新增任何 `err('...')`，必须同时登记进
+`common.js` 的 `BACKEND_MSG` / `BACKEND_MSG_ARG` 并补中文，
+否则 CI 直接拦下。
+
+---
+
+### 12.23 CI 的 `checks` 作业
+
+`checks` 作业在 `build` 之前跑（`build` 声明 `needs: checks`），含四项：
+
+| 检查 | 拦下的真实事故 |
+| --- | --- |
+| 可执行位（读 git 索引） | init 脚本入库成 644，装到设备上服务起不来 |
+| 翻译完整性 | 后端 `err()` 漏登记、映射表重复键、与核心语言包同名不同译 |
+| 守护进程单元测试 | 探测输出解析、字段对齐、TCP 判定等逻辑回归 |
+| 图标与视图断言 | 图标导出缺失、SVG 结构与尺寸阈值被破坏 |
+
+之所以**前置**而不是放在 build 之后：这几项失败时，产物照样能编出来、
+CI 也是绿的，只是装上不能用 —— 等到设备实测才发现，代价最大。
+
+---
+
 ## 十三、兼容性
 
 - 目标平台：OpenWrt 主线（23.05 / 24.x 及更新版本），兼容其衍生发行版
@@ -1207,5 +1382,11 @@ python3 nm_svg_verify.py
 
 ## 十六、许可证
 
-GPL-2.0-or-later，详见 `LICENSE`。
+GPL-3.0-or-later，`LICENSE` 为 GPLv3 完整官方文本。
+
+Copyright (C) 2026 netmonitor contributors
+
+本包沿用 LuCI 生态惯例，以 SPDX 标识 `GPL-3.0-or-later` 声明在 `Makefile` 的
+`PKG_LICENSE` 中；原 1.1.0 及更早版本发布于 GPL-2.0-or-later，该许可证本身即允许
+按 GPLv3 使用。各版本变更见 `CHANGELOG.md`。
 

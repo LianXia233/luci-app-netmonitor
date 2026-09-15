@@ -99,7 +99,7 @@ function bigEnough(size, min) {
 function wrap(size, inner, label) {
 	var s = (size == null) ? 40 : size;
 	return '<svg class="nm-svg" width="' + s + '" height="' + s + '" viewBox="0 0 120 120" ' +
-		'role="img" aria-label="' + esc(label || 'icon') + '">' + inner + '</svg>';
+		'role="img" aria-label="' + esc(label || _('Icon')) + '">' + inner + '</svg>';
 }
 
 /* 环形进度：track 为底环，progress 为真实数据对应的弧长 */
@@ -599,7 +599,7 @@ function responsive(size) {
 function dot(grade, size) {
 	var s = size || 10;
 	return '<svg class="nm-svg" width="' + s + '" height="' + s + '" viewBox="0 0 10 10" ' +
-		'role="img" aria-label="status">' +
+		'role="img" aria-label="' + esc(_('Status')) + '">' +
 		'<circle cx="5" cy="5" r="4" class="' + fc(gradeColor(grade)) + '"/></svg>';
 }
 

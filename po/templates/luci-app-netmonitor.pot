@@ -4,7 +4,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: luci-app-netmonitor 1.1.0\n"
+"Project-Id-Version: luci-app-netmonitor 1.2.0\n"
 "Language: en\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -12,7 +12,7 @@ msgstr ""
 "X-Generator: po/gen_po.py\n"
 
 
-msgid "Never"
+msgid "Never checked"
 msgstr ""
 
 msgid "Just now"
@@ -57,13 +57,19 @@ msgstr ""
 msgid "Loss"
 msgstr ""
 
-msgid "Uptime"
+msgid "Availability"
 msgstr ""
 
 msgid "Avg"
 msgstr ""
 
 msgid "P95"
+msgstr ""
+
+msgid "Icon"
+msgstr ""
+
+msgid "Status"
 msgstr ""
 
 msgid "Time range"
@@ -192,10 +198,19 @@ msgstr ""
 msgid "No enabled targets. Go to Targets to add one."
 msgstr ""
 
+msgid "Weighted loss"
+msgstr ""
+
+msgid "Lost packets"
+msgstr ""
+
 msgid "Across enabled targets"
 msgstr ""
 
 msgid "Latest probe round"
+msgstr ""
+
+msgid "Unweighted"
 msgstr ""
 
 msgid "China network"
@@ -265,9 +280,6 @@ msgid "Failed"
 msgstr ""
 
 msgid "Disabled"
-msgstr ""
-
-msgid "Status"
 msgstr ""
 
 msgid "Search name or address"
@@ -600,9 +612,6 @@ msgstr ""
 msgid "No changes to save"
 msgstr ""
 
-msgid "Saved"
-msgstr ""
-
 msgid "Changes discarded"
 msgstr ""
 
@@ -624,7 +633,7 @@ msgstr ""
 msgid "Probe method"
 msgstr ""
 
-msgid "Label"
+msgid "Custom label"
 msgstr ""
 
 msgid "Family"
@@ -678,9 +687,6 @@ msgstr ""
 msgid "TCP port (0 = global default)"
 msgstr ""
 
-msgid "Custom label"
-msgstr ""
-
 msgid "Check interval (s, 0 = global)"
 msgstr ""
 
@@ -694,9 +700,6 @@ msgid "Remark"
 msgstr ""
 
 msgid "Cancel"
-msgstr ""
-
-msgid "Save"
 msgstr ""
 
 msgid "Name and address are required"
@@ -760,4 +763,58 @@ msgid "15 min"
 msgstr ""
 
 msgid "30 min"
+msgstr ""
+
+msgid "Invalid arguments"
+msgstr ""
+
+msgid "Invalid ID"
+msgstr ""
+
+msgid "Invalid target selection"
+msgstr ""
+
+msgid "Invalid name"
+msgstr ""
+
+msgid "Invalid host"
+msgstr ""
+
+msgid "Invalid region"
+msgstr ""
+
+msgid "Invalid label"
+msgstr ""
+
+msgid "Invalid protocol"
+msgstr ""
+
+msgid "Invalid address family"
+msgstr ""
+
+msgid "Invalid interface"
+msgstr ""
+
+msgid "Invalid source address"
+msgstr ""
+
+msgid "Invalid remark"
+msgstr ""
+
+msgid "Invalid direction"
+msgstr ""
+
+msgid "Target not found"
+msgstr ""
+
+msgid "Target already exists"
+msgstr ""
+
+msgid "Cannot create configuration section"
+msgstr ""
+
+msgid "Already at the boundary"
+msgstr ""
+
+msgid "Invalid value for %s"
 msgstr ""

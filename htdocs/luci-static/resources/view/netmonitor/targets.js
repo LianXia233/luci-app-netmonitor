@@ -79,7 +79,7 @@ return view.extend({
 		var tbody = common.el('tbody', '');
 		var htr = common.el('tr', '');
 		htr.appendChild(common.el('th', '', ''));
-		[_('Name'), _('Address'), _('Probe method'), _('Region'), _('Label'), _('Family'),
+		[_('Name'), _('Address'), _('Probe method'), _('Region'), _('Custom label'), _('Family'),
 		 _('Interval'), _('Timeout'), _('Interface'), _('Enabled'), _('Actions')]
 			.forEach(function(h) { htr.appendChild(common.el('th', '', h)); });
 		thead.appendChild(htr);
@@ -315,7 +315,11 @@ return view.extend({
 
 			var actions = common.el('div', 'nm-modal-actions');
 			var btnCancel = common.el('button', 'nm-btn', _('Cancel'));
-			var btnSave = common.el('button', 'nm-btn nm-btn-primary', _('Save'));
+			/* 弹窗里唯一的保存入口。它是模态对话框自己的确认动作，
+			 * 不是页面级的第二个「保存并应用」——页面底部那组由 LuCI 主题
+			 * 渲染的按钮保持原样，插件不另外添加，避免两个入口并存。
+			 * 弹窗打开时它被遮罩完全盖住，两者不会同时出现在视野里。 */
+			var btnSave = common.el('button', 'nm-btn nm-btn-primary', _('Save & Apply'));
 
 			function close() {
 				if (modal.parentNode) modal.parentNode.removeChild(modal);
@@ -354,10 +358,24 @@ return view.extend({
 					return;
 				}
 				btnSave.disabled = true;
+				btnCancel.disabled = true;
 
-				/* 保存同样走 OpenWrt 原生 uci 事务（uci.set/add → save → apply），
-				 * 与 LuCI 自带页面一致：提交、失败回滚、procd reload trigger
-				 * 重载后台服务一步到位。 */
+				/* 「保存」与「应用」都复用 OpenWRT 自带的机制：
+				 *
+				 *   写配置  common.saveConfig / common.addSection
+				 *           → 原生 uci 事务（uci.set/unset/add），把改动推入
+				 *             rpcd 会话的「待应用更改」；此时只进会话，不落盘
+				 *
+				 *   应用    common.applyChanges()
+				 *           → LuCI「保存并应用」按钮背后的 ui.changes.apply(true)，
+				 *             即 POST admin/uci/apply_rollback →
+				 *             ubus call uci apply { rollback:true, timeout>=90 }
+				 *             → 提交配置 + /sbin/reload_config → procd reload
+				 *               trigger 触发 /etc/init.d/netmonitor reload
+				 *
+				 * 应用过程本身也由 LuCI 负责：官方的「正在应用配置更改… Ns」
+				 * 提示、连接性变更确认、应用后失联的自动回滚、成功后重载页面，
+				 * 插件都不再自建一套，因此不存在两条提交通道并存的差异。 */
 				var p;
 				if (t) {
 					var ops = [];
@@ -368,12 +386,27 @@ return view.extend({
 					p = common.addSection('netmonitor', 'target', data);
 				}
 				p.then(function(changed) {
+					/* changed 为 0 表示填的值与设备现状完全一致。此时不能调用
+					 * applyChanges()：没有待提交改动时 rpcd 的 uci.apply 会直接
+					 * 报错（实测 ubus code 5）。 */
+					if (changed === 0) {
+						close();
+						common.notify(_('No changes to save'));
+						return;
+					}
 					close();
-					reload();
-					common.notify(changed === 0 ? _('No changes to save') : _('Saved'));
+					/* 这里刻意不刷新表格：改动还在 rpcd 会话里、尚未落盘，
+					 * 立即回读只会拿到旧值。官方 apply 完成后 LuCI 会重载页面，
+					 * 届时读到的就是新配置。 */
+					return common.applyChanges();
 				}).catch(function(e) {
+					/* 写入阶段失败时弹窗还在，错误照常显示在弹窗内；
+					 * 应用阶段失败时弹窗已关闭，由 LuCI 自己的状态提示负责告知。 */
+					if (!modal.parentNode)
+						return;
 					errBox.textContent = String(e.message || e);
 					btnSave.disabled = false;
+					btnCancel.disabled = false;
 				});
 			});
 

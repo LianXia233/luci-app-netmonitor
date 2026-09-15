@@ -10,7 +10,15 @@
  *      大面积 box-shadow，降低低端路由设备的 CPU/GPU 开销。
  */
 
-.nm-root {
+/* 变量同时定义在 .nm-root 与 .nm-modal 上。
+ *
+ * 原因：编辑弹窗必须挂在 document.body 下（否则会被祖先的 overflow/transform
+ * 裁掉），于是它不在 .nm-root 的子树里。若变量只定义在 .nm-root，弹窗内
+ * 所有 var(--nm-*) 都会解析为空，var() 又没写回退值时整条声明失效 ——
+ * 实测表现为 .nm-btn-primary 的 background 变成 transparent，
+ * 白字落在透明底上，看起来「保存按钮不见了」。 */
+.nm-root,
+.nm-modal {
 	--nm-bg: var(--background-color, #ffffff);
 	--nm-fg: var(--text-color, #20242c);
 	--nm-card: var(--light-bg-color, #f7f8fa);
@@ -34,14 +42,17 @@
 	--nm-radius: 14px;
 	--nm-radius-sm: 9px;
 	--nm-gap: 14px;
+}
 
+.nm-root {
 	color: var(--nm-fg);
 	font-size: 14px;
 	line-height: 1.5;
 }
 
 @media (prefers-color-scheme: dark) {
-	.nm-root {
+	.nm-root,
+	.nm-modal {
 		--nm-bg: var(--background-color, #14171c);
 		--nm-fg: var(--text-color, #e6e9ef);
 		--nm-card: var(--light-bg-color, #1c2027);
@@ -67,16 +78,33 @@
 	gap: var(--nm-gap);
 }
 
+/* 指标栅格。
+ *
+ * 不用 repeat(auto-fill, minmax(...))：列数由容器宽度决定，卡片个数却由
+ * 数据决定，两者对不上时最后一行就会只占半行、右侧留出大片空白
+ * （实测 1440px 下 6 张卡片被排成 4+2，右侧空出整整两列）。
+ * 这里改成按断点显式指定列数，卡片数与列数在常见宽度下都能整除：
+ *   3 列 → 6 张排成 2 行；2 列 → 3 行；1 列 → 6 行，行行铺满。 */
 .nm-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(255px, 1fr));
+	grid-template-columns: repeat(3, minmax(0, 1fr));
 	gap: var(--nm-gap);
 }
 
+@media (max-width: 1100px) {
+	.nm-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* 目标卡片栅格。最小列宽压到 275px，使 4 个目标在 1440px 下恰好一行铺满
+ * （1248px 容器 → 4 × 301.5px），不再出现「3 张一行 + 1 张孤零零占左边」。 */
 .nm-grid-wide {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+	grid-template-columns: repeat(auto-fill, minmax(275px, 1fr));
 	gap: var(--nm-gap);
+}
+
+@media (max-width: 1280px) {
+	.nm-grid-wide { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 .nm-row {
@@ -464,9 +492,20 @@
 .nm-btn:hover { background: var(--nm-card-hi); }
 .nm-btn:active { transform: translateY(1px); }
 
+/* 主按钮：--nm-accent 一律带字面回退值。
+ * 变量缺失时（例如被移植到别的容器里）回退到与默认主题一致的蓝色，
+ * 而不是让 background 整条失效变成透明。 */
 .nm-btn-primary {
-	background: var(--nm-accent);
-	border-color: var(--nm-accent);
+	background: var(--nm-accent, #2f6fed);
+	border-color: var(--nm-accent, #2f6fed);
+	color: #fff;
+}
+
+/* .nm-btn:hover 会把底色刷成 --nm-card-hi（浅色），若不覆盖，
+ * 主按钮一悬停就变成「白字 + 浅底」，同样看不见。 */
+.nm-btn-primary:hover {
+	background: color-mix(in srgb, var(--nm-accent, #2f6fed) 88%, #000 12%);
+	border-color: color-mix(in srgb, var(--nm-accent, #2f6fed) 88%, #000 12%);
 	color: #fff;
 }
 
@@ -767,8 +806,8 @@
 /* ---------------------------------------------------------------- 响应式 */
 
 @media (max-width: 900px) {
-	.nm-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
-	.nm-grid-wide { grid-template-columns: 1fr; }
+	.nm-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+	.nm-grid-wide { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 640px) {
@@ -820,7 +859,9 @@
 	max-width: 420px;
 	max-height: 88vh;
 	overflow-y: auto;
-	padding: 18px 20px;
+	/* 底部不留内边距：操作区用 sticky 贴住滚动容器底部，
+	 * 由它自己提供下内边距，否则贴底时会露出一条背景缝。 */
+	padding: 18px 20px 0 20px;
 	box-shadow: 0 12px 34px rgba(0, 0, 0, 0.20);
 }
 
@@ -834,11 +875,21 @@
 .nm-modal-box .nm-input,
 .nm-modal-box .nm-select { width: 100%; }
 
+/* 操作区（取消 / 保存并应用）固定在弹窗可视区底部。
+ *
+ * 实测：字段多时 .nm-modal-box 内容高 960px、可视仅 634px，
+ * 操作区落在滚动折叠区之外（y=952，视口只有 720 高），
+ * 不滚动弹窗内部就完全看不到主按钮。sticky 贴底后无需滚动即可见。 */
 .nm-modal-actions {
 	display: flex;
 	justify-content: flex-end;
 	gap: 10px;
-	margin-top: 16px;
+	position: sticky;
+	bottom: 0;
+	margin: 14px -20px 0 -20px;
+	padding: 12px 20px;
+	background: var(--nm-bg, #fff);
+	border-top: 1px solid var(--nm-border);
 }
 
 .nm-modal-error {
