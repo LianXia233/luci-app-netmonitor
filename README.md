@@ -116,24 +116,117 @@ make package/luci-app-netmonitor/compile V=s
 
 ### 5.2 安装到设备
 
+本包 `PKGARCH=all`，架构无关，同一份产物可安装到任意架构设备。
+
+**opkg（OpenWrt 23.05 / 24.10）**
+
 ```bash
 opkg update
-opkg install luci-app-netmonitor
-# 或直接从构建机拷贝 ipk 后安装
-# scp luci-app-netmonitor_*.ipk root@192.168.1.1:/tmp/ && ssh root@192.168.1.1 opkg install /tmp/luci-app-netmonitor_*.ipk
+opkg install luci-app-netmonitor luci-i18n-netmonitor-zh_Hans
 ```
 
-安装后：
+**apk（OpenWrt 25.x 及更新版本）**
 
 ```bash
-/etc/init.d/netmonitor enable      # 开机自启
+apk update
+apk add luci-app-netmonitor luci-i18n-netmonitor-zh_Hans
+```
+
+**离线安装**（从构建机拷贝产物）
+
+```bash
+scp luci-app-netmonitor_*.ipk luci-i18n-netmonitor-zh_Hans_*.ipk root@192.168.1.1:/tmp/
+ssh root@192.168.1.1 "opkg install /tmp/luci-app-netmonitor_*.ipk /tmp/luci-i18n-netmonitor-zh_Hans_*.ipk"
+```
+
+**签名校验失败**（自编译包未签名，opkg 报 `Signature check failed`）：
+
+```bash
+opkg install --force-downgrade --force-depends luci-app-netmonitor_*.ipk
+# 必要时加 --force-overwrite 覆盖同名文件
+```
+
+apk 侧对应参数：
+
+```bash
+apk add --allow-untrusted luci-app-netmonitor_*.apk
+```
+
+> `--force-downgrade` 用于版本号低于设备已装版本时（重复安装调试版本很常见）。
+
+**安装后必须重载 rpcd 与 uhttpd**，否则 RPC 后端不生效、菜单不出现：
+
+```bash
+rm -f /tmp/luci-indexcache*          # 清 LuCI 菜单索引缓存
+/etc/init.d/rpcd restart
+/etc/init.d/uhttpd restart
+
+/etc/init.d/netmonitor enable        # 开机自启
 /etc/init.d/netmonitor start
 /etc/init.d/netmonitor status
 ```
 
-浏览器进入 **状态 → 网络质量监控**。
+浏览器进入 **状态 → 网络质量监控**（本插件挂载在一级菜单「状态」下，不是「网络」）。
 
-### 5.3 依赖
+### 5.3 实机验证步骤（逐条确认）
+
+```bash
+# 1) 后台守护进程存活
+/etc/init.d/netmonitor status
+pgrep -f netmon-daemon
+
+# 2) ubus 对象已注册（未注册说明 rpcd 没重载或 ucode 文件有语法错误）
+ubus list | grep netmonitor          # 期望: luci.netmonitor
+
+# 3) 探测链路正常（tick 应随时间递增）
+ubus call luci.netmonitor service_status
+sleep 12; ubus call luci.netmonitor service_status
+
+# 4) 目标状态：失败时 latency 必须为 null，不能是 0
+ubus call luci.netmonitor get_status
+
+# 5) 统计与曲线
+ubus call luci.netmonitor get_statistics '{"range":"1h"}'
+ubus call luci.netmonitor get_history  '{"range":"1h"}'
+
+# 6) 运行期文件（均在 /tmp，不写 Flash）
+ls -la /tmp/netmonitor/{state,ring,hist}/
+```
+
+**依赖缺失排查**（ubus 对象不出现、页面报错时）：
+
+```bash
+# 逐个确认依赖已安装
+for p in luci-base luci-mod-status rpcd rpcd-mod-ucode ucode \
+         ucode-mod-fs ucode-mod-uci ucode-mod-ubus ucode-mod-uloop; do
+    opkg status "$p" >/dev/null 2>&1 && echo "ok   $p" || echo "MISS $p"
+done
+
+# 确认 ucode 插件被 rpcd 加载（语法错误会在此暴露）
+ucode -c /usr/share/rpcd/ucode/luci.netmonitor && echo "ucode syntax OK"
+/etc/init.d/rpcd restart; sleep 2; ubus list | grep netmonitor
+```
+
+**日志查看**
+
+```bash
+logread | grep netmonitor            # 服务启停、配置重载、目标状态翻转
+logread | grep -i rpcd               # RPC 后端加载失败原因
+/etc/init.d/netmonitor stop
+/usr/libexec/netmonitor/netmon-daemon.sh   # 前台运行，直接看探测输出（排障首选）
+```
+
+> 正常探测不写日志，只有状态翻转（恢复 / 失败）与异常才记录，避免刷屏。
+
+**卸载后复核**
+
+```bash
+opkg remove luci-app-netmonitor luci-i18n-netmonitor-zh_Hans
+/etc/init.d/rpcd restart
+ubus list | grep netmonitor          # 应无输出
+```
+
+### 5.4 依赖
 
 ```
 luci-base  luci-mod-status  rpcd  rpcd-mod-ucode
