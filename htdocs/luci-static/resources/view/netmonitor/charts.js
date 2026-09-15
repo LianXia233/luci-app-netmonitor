@@ -113,6 +113,20 @@ return view.extend({
 
 		page.appendChild(card);
 
+		/* 与后端一致的等级判定（阈值取自 getConfig），保证图标颜色与后端 grade 对齐 */
+		function gradeOf(ms) {
+			if (ms == null || isNaN(ms)) return 'unknown';
+			var ex = parseFloat(cfg.latency_excellent) || 50;
+			var gd = parseFloat(cfg.latency_good) || 100;
+			var fr = parseFloat(cfg.latency_fair) || 200;
+			var pr = parseFloat(cfg.latency_poor) || 500;
+			if (ms <= ex) return 'excellent';
+			if (ms <= gd) return 'good';
+			if (ms <= fr) return 'fair';
+			if (ms <= pr) return 'poor';
+			return 'severe';
+		}
+
 		function renderChips() {
 			common.clear(chips);
 			if (!data || !data.series.length) return;
@@ -176,18 +190,33 @@ return view.extend({
 				legend.appendChild(item);
 			}
 
-			function sumBox(label, value, cls) {
+			function sumBox(label, value, cls, svg) {
 				var b = common.el('div', 'nm-card');
-				b.style.flex = '1 1 120px';
+				b.style.flex = '1 1 150px';
 				b.appendChild(common.el('div', 'nm-card-title', label));
 				b.appendChild(common.el('div', 'nm-card-value ' + (cls || ''), value));
+				if (svg) common.cardIcon(b, svg);
 				return b;
 			}
 			var avgCur = cur.length ? (cur.reduce(function(a, b) { return a + b; }, 0) / cur.length) : null;
-			summary.appendChild(sumBox(_('Current'), common.fmt.latency(avgCur) + ' ms', 'nm-c-ok'));
-			summary.appendChild(sumBox(_('Max'), common.fmt.latency(mx.length ? Math.max.apply(null, mx) : null) + ' ms'));
-			summary.appendChild(sumBox(_('Min'), common.fmt.latency(mn.length ? Math.min.apply(null, mn) : null) + ' ms'));
-			summary.appendChild(sumBox(_('Range'), _(RANGES.filter(function(r) { return r[0] === range; })[0][1])));
+			var maxV = mx.length ? Math.max.apply(null, mx) : null;
+			var minV = mn.length ? Math.min.apply(null, mn) : null;
+			var rangeLabel = _(RANGES.filter(function(r) { return r[0] === range; })[0][1]);
+
+			summary.appendChild(sumBox(_('Current'), common.fmt.latency(avgCur) + ' ms',
+				common.gradeClass(gradeOf(avgCur)), icons.latencyDial(avgCur, gradeOf(avgCur), 50)));
+			summary.appendChild(sumBox(_('Max'), common.fmt.latency(maxV) + ' ms',
+				common.gradeClass(gradeOf(maxV)), icons.highLatency(maxV, gradeOf(maxV), 50)));
+			summary.appendChild(sumBox(_('Min'), common.fmt.latency(minV) + ' ms',
+				common.gradeClass(gradeOf(minV)), icons.gradeGauge(minV, gradeOf(minV), 50)));
+			summary.appendChild(sumBox(_('Range'), rangeLabel, '', icons.database(50)));
+
+			/* 柱状高度取各已选目标的当前延迟，柱数与已选目标数一致 */
+			var plot = [];
+			for (var q = 0; q < cur.length && q < 4; q++) plot.push(cur[q]);
+			summary.appendChild(common.iconCard(_('Live sampling'),
+				String(series.length) + ' / ' + String(data.series.length),
+				_('Selected targets'), icons.liveBars(plot, 56)));
 
 			hint.textContent = (data.source === 'persistent')
 				? _('Data source: persistent history on flash')

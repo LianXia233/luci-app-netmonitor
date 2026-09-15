@@ -54,17 +54,17 @@ msgstr "目标无效"
 msgid "Check failed"
 msgstr "检测失败"
 
-msgid "Avg"
-msgstr "平均"
-
-msgid "P95"
-msgstr "P95"
-
 msgid "Loss"
 msgstr "丢包"
 
 msgid "Uptime"
 msgstr "在线率"
+
+msgid "Avg"
+msgstr "平均"
+
+msgid "P95"
+msgstr "P95"
 
 msgid "Time range"
 msgstr "时间范围"
@@ -89,6 +89,12 @@ msgstr "最小"
 
 msgid "Range"
 msgstr "范围"
+
+msgid "Live sampling"
+msgstr "实时采样"
+
+msgid "Selected targets"
+msgstr "已选目标"
 
 msgid "Data source: persistent history on flash"
 msgstr "数据来源：Flash 持久化历史"
@@ -126,6 +132,21 @@ msgstr "P50"
 msgid "Latency trend"
 msgstr "延迟趋势"
 
+msgid "Target count"
+msgstr "目标数"
+
+msgid "Average latency"
+msgstr "平均延迟"
+
+msgid "Packet loss"
+msgstr "丢包率"
+
+msgid "Weighted by samples"
+msgstr "按样本加权"
+
+msgid "Success rate"
+msgstr "成功率"
+
 msgid "No data in this range"
 msgstr "该时间范围内没有数据"
 
@@ -156,17 +177,11 @@ msgstr "一个或多个目标连续失败次数已超过阈值。"
 msgid "Current latency"
 msgstr "当前延迟"
 
-msgid "Packet loss"
-msgstr "丢包率"
-
 msgid "Online"
 msgstr "在线"
 
 msgid "Abnormal"
 msgstr "异常"
-
-msgid "Target count"
-msgstr "目标数"
 
 msgid "Background service is not running. Monitoring is stopped."
 msgstr "后台服务未运行，监控已停止。"
@@ -177,17 +192,11 @@ msgstr "后台服务近期未更新数据，请检查服务状态。"
 msgid "No enabled targets. Go to Targets to add one."
 msgstr "没有已启用的目标，请到「目标管理」添加。"
 
-msgid "Average latency"
-msgstr "平均延迟"
-
 msgid "Across enabled targets"
 msgstr "所有已启用目标的平均值"
 
 msgid "Latest probe round"
 msgstr "最近一次检测结果"
-
-msgid "Weighted by samples"
-msgstr "按样本加权"
 
 msgid "China network"
 msgstr "国内网络"
@@ -197,6 +206,33 @@ msgstr "国外网络"
 
 msgid "Online targets"
 msgstr "在线目标"
+
+msgid "Last check"
+msgstr "最后检测"
+
+msgid "Probe settings"
+msgstr "探测设置"
+
+msgid "Interval"
+msgstr "检测间隔"
+
+msgid "Data source"
+msgstr "数据来源"
+
+msgid "Persistent history"
+msgstr "历史持久化"
+
+msgid "In-memory ring buffer"
+msgstr "内存环形缓存"
+
+msgid "Retention"
+msgstr "保留期"
+
+msgid "Dual stack"
+msgstr "双协议栈"
+
+msgid "Address family"
+msgstr "地址族"
 
 msgid "No targets configured"
 msgstr "尚未配置监控目标"
@@ -255,17 +291,11 @@ msgstr "地址"
 msgid "Fails"
 msgstr "连续失败"
 
-msgid "Last check"
-msgstr "最后检测"
-
 msgid "No matching targets"
 msgstr "没有匹配的目标"
 
 msgid "Updated"
 msgstr "更新时间"
-
-msgid "Interval"
-msgstr "检测间隔"
 
 msgid "UI refresh"
 msgstr "界面刷新"
@@ -294,6 +324,39 @@ msgstr "确定清空所有历史数据？"
 msgid "History cleared"
 msgstr "历史数据已清空"
 
+msgid "Check interval"
+msgstr "检测间隔"
+
+msgid "Packets per probe"
+msgstr "每次检测发包数"
+
+msgid "Probe timeout"
+msgstr "探测超时"
+
+msgid "Concurrent probes"
+msgstr "并发检测数量"
+
+msgid "Enabled"
+msgstr "启用"
+
+msgid "Master switch"
+msgstr "总开关"
+
+msgid "Enable notification"
+msgstr "启用通知"
+
+msgid "Reserved"
+msgstr "预留"
+
+msgid "Thresholds"
+msgstr "阈值"
+
+msgid "UI refresh interval"
+msgstr "界面刷新间隔"
+
+msgid "Independent from the probe interval"
+msgstr "与探测间隔相互独立"
+
 msgid "Global settings"
 msgstr "全局设置"
 
@@ -318,20 +381,11 @@ msgstr "Ping 超时（秒）"
 msgid "Per-packet wait time before a probe is considered lost."
 msgstr "单个探测包的等待时间，超时即判定为丢包。"
 
-msgid "Packets per probe"
-msgstr "每次检测发包数"
-
 msgid "Higher values give better loss statistics but cost more time."
 msgstr "数值越大丢包统计越准，但耗时更长。"
 
-msgid "Concurrent probes"
-msgstr "并发检测数量"
-
 msgid "Maximum number of targets probed in parallel."
 msgstr "同时进行探测的目标数量上限。"
-
-msgid "Address family"
-msgstr "地址族"
 
 msgid "Auto"
 msgstr "自动"
@@ -359,9 +413,6 @@ msgstr "将探测绑定到指定的源 IP 地址。"
 
 msgid "Data retention"
 msgstr "数据保留"
-
-msgid "Persistent history"
-msgstr "历史持久化"
 
 msgid "Write aggregated samples to flash periodically. Disabled by default to protect flash lifetime."
 msgstr "定期将聚合数据写入 Flash。默认关闭以保护 Flash 寿命。"
@@ -401,9 +452,6 @@ msgstr "每目标内存采样点数"
 
 msgid "Ring buffer size in /tmp. 4320 samples at 10s interval covers about 12 hours."
 msgstr "/tmp 中环形缓存的大小。10 秒间隔下 4320 点约覆盖 12 小时。"
-
-msgid "Thresholds"
-msgstr "阈值"
 
 msgid "Excellent below (ms)"
 msgstr "优秀（低于，毫秒）"
@@ -459,9 +507,6 @@ msgstr "错误"
 msgid "Notification (reserved)"
 msgstr "通知（预留）"
 
-msgid "Enable notification"
-msgstr "启用通知"
-
 msgid "Interface is reserved for future webhook / Telegram / WeCom / DingTalk / mail support."
 msgstr "接口预留，后续可扩展 Webhook、Telegram、企业微信、钉钉、邮件等方式。"
 
@@ -495,14 +540,14 @@ msgstr "地址族"
 msgid "Interface"
 msgstr "接口"
 
-msgid "Enabled"
-msgstr "启用"
-
 msgid "Actions"
 msgstr "操作"
 
 msgid "Interval and timeout set to 0 inherit the global settings."
 msgstr "间隔与超时填 0 表示继承全局设置。"
+
+msgid "The table scrolls horizontally on small screens."
+msgstr "小屏幕下表格可横向滚动。"
 
 msgid "IPv4"
 msgstr "IPv4"

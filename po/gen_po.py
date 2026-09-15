@@ -128,6 +128,25 @@ ZH = {
     'Stop': '停止',
     'Restart': '重启',
 
+    # 动态 SVG 图标卡片
+    'Success rate': '成功率',
+    'Samples': '样本数',
+    'Probe settings': '探测设置',
+    'Check interval': '检测间隔',
+    'Probe timeout': '探测超时',
+    'Data source': '数据来源',
+    'In-memory ring buffer': '内存环形缓存',
+    'Retention': '保留期',
+    'Dual stack': '双协议栈',
+    'Address family': '地址族',
+    'Live sampling': '实时采样',
+    'Selected targets': '已选目标',
+    'Master switch': '总开关',
+    'Reserved': '预留',
+    'UI refresh interval': '界面刷新间隔',
+    'Independent from the probe interval': '与探测间隔相互独立',
+    'The table scrolls horizontally on small screens.': '小屏幕下表格可横向滚动。',
+
     # 实时监控
     'All regions': '所有区域',
     'All status': '所有状态',

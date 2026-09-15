@@ -90,6 +90,10 @@ return view.extend({
 		bar.appendChild(barRow);
 		page.appendChild(bar);
 
+		/* 实时指标条：与表格同源（同一次 getStatus），不会造成额外探测 */
+		var strip = common.el('div', 'nm-grid');
+		page.appendChild(strip);
+
 		/* 表格 */
 		var wrap = common.el('div', 'nm-table-wrap');
 		var table = common.el('table', 'nm-table');
@@ -129,10 +133,58 @@ return view.extend({
 			return true;
 		}
 
+		/* 每一行的状态图标按真实的失败类型切换：
+		 * DNS 失败显示地球+叉、超时显示丢包、高延迟显示波形，正常显示在线环。
+		 * 也就是说图标是「诊断结果的可视化」，而不是同一个图标换个颜色。 */
+		function statusIcon(t) {
+			if (!t.enabled) return icons.online(22, false);
+			if (t.last_error === 'dns') return icons.dnsFail(22);
+			if (t.last_error) return icons.packetLoss(100, 22);
+			if (t.grade === 'poor' || t.grade === 'severe') return icons.highLatency(t.latency, t.grade, 22);
+			return icons.online(22, true);
+		}
+
+		function gradeFromCfg(ms) {
+			if (ms == null || isNaN(ms)) return 'unknown';
+			var ex = parseFloat(cfg.latency_excellent) || 50;
+			var gd = parseFloat(cfg.latency_good) || 100;
+			var fr = parseFloat(cfg.latency_fair) || 200;
+			var pr = parseFloat(cfg.latency_poor) || 500;
+			if (ms <= ex) return 'excellent';
+			if (ms <= gd) return 'good';
+			if (ms <= fr) return 'fair';
+			if (ms <= pr) return 'poor';
+			return 'severe';
+		}
+
+		function renderStrip(d) {
+			common.clear(strip);
+			var o = d.overall || {};
+			var ok = (o.offline || 0) === 0;
+
+			strip.appendChild(common.iconCard(_('Online targets'),
+				String(o.online || 0) + ' / ' + String(o.total || 0),
+				_('Abnormal') + ': ' + (o.offline || 0), icons.online(60, ok),
+				ok ? 'nm-c-ok' : 'nm-c-bad'));
+
+			strip.appendChild(common.iconCard(_('Current latency'),
+				common.fmt.latency(o.current) + ' ms',
+				_('Latest probe round'), icons.latencyDial(o.current, gradeFromCfg(o.current), 60),
+				common.gradeClass(gradeFromCfg(o.current))));
+
+			strip.appendChild(common.iconCard(_('Packet loss'), common.fmt.percent(o.loss),
+				_('Weighted by samples'), icons.lossRing(o.loss, 60),
+				(o.loss > 5) ? 'nm-c-bad' : (o.loss > 0 ? 'nm-c-warn' : 'nm-c-ok')));
+
+			strip.appendChild(common.iconCard(_('Last check'), common.fmt.ago(d.tick),
+				common.fmt.clock(d.tick), icons.clock(d.tick, 60)));
+		}
+
 		function renderTable() {
 			if (!latest) return;
 			common.clear(tbody);
 			common.clear(cards);
+			renderStrip(latest);
 
 			var list = (latest.targets || []).filter(match);
 			if (!list.length) {
@@ -163,7 +215,13 @@ return view.extend({
 				var stText = t.enabled ? (t.status === 'online' ? _('Online') : _('Failed')) : _('Disabled');
 				if (!t.enabled) stText = _('Disabled');
 				else if (t.last_error) stText = common.errorText(t.last_error);
-				row.appendChild(common.el('td', common.gradeClass(t.grade), stText));
+				var tdSt = common.el('td', '');
+				tdSt.style.display = 'flex';
+				tdSt.style.alignItems = 'center';
+				tdSt.style.gap = '6px';
+				tdSt.appendChild(common.inlineIcon(statusIcon(t)));
+				tdSt.appendChild(common.el('span', common.gradeClass(t.grade), stText));
+				row.appendChild(tdSt);
 
 				row.appendChild(common.el('td', 'nm-num', common.fmt.latency(t.latency)));
 				row.appendChild(common.el('td', 'nm-num', common.fmt.latency(t.avg)));

@@ -54,7 +54,10 @@ return view.extend({
 		page.appendChild(grid);
 
 		var compare = common.el('div', 'nm-card');
-		compare.appendChild(common.el('div', 'nm-card-title', _('Region latency comparison')));
+		var cmpTitle = common.el('div', 'nm-row');
+		cmpTitle.appendChild(common.inlineIcon(icons.trend(36)));
+		cmpTitle.appendChild(common.el('div', 'nm-card-title', _('Region latency comparison')));
+		compare.appendChild(cmpTitle);
 		var compareBox = common.el('div', 'nm-chart-box');
 		compare.appendChild(compareBox);
 		var compareLegend = common.el('div', 'nm-chart-legend');
@@ -67,16 +70,21 @@ return view.extend({
 		function regionCard(title, x, icon) {
 			var c = common.el('div', 'nm-card nm-card-hi');
 			var head = common.el('div', 'nm-row');
-			head.appendChild(common.svgBox(icon, ''));
 			head.appendChild(common.el('div', 'nm-card-title', title));
 			head.appendChild(common.el('div', 'nm-spacer'));
 			head.appendChild(common.el('span', 'nm-tag', (x.total || 0) + ' ' + _('Target count')));
 			c.appendChild(head);
 
-			var v = common.el('div', 'nm-card-value ' + ((x.abnormal > 0) ? 'nm-c-warn' : 'nm-c-ok'),
-				common.fmt.latency(x.avg) + ' ms');
-			c.appendChild(v);
-			c.appendChild(common.el('div', 'nm-card-sub', _('Average latency')));
+			/* 区域图标与区域真实延迟并排：图标中的节点颜色由 abnormal 决定，
+			 * 因此「图标本身就是该区域的健康度」 */
+			var body = common.el('div', 'nm-icon-card');
+			body.appendChild(common.svgBox(icon, 'nm-icon-card-svg'));
+			var right = common.el('div', 'nm-icon-card-body');
+			right.appendChild(common.el('div', 'nm-card-value ' + ((x.abnormal > 0) ? 'nm-c-warn' : 'nm-c-ok'),
+				common.fmt.latency(x.avg) + ' ms'));
+			right.appendChild(common.el('div', 'nm-card-sub', _('Average latency')));
+			body.appendChild(right);
+			c.appendChild(body);
 
 			var m = common.el('div', 'nm-target-metrics');
 			m.style.marginTop = '10px';
@@ -93,6 +101,23 @@ return view.extend({
 			m.appendChild(mm(_('Online'), String(x.online || 0)));
 			m.appendChild(mm(_('Total'), String(x.total || 0)));
 			c.appendChild(m);
+
+			var rings = common.el('div', 'nm-target-rings');
+			function ring(svg, label, value, cls) {
+				var box = common.el('div', 'nm-ring-item');
+				box.appendChild(common.svgBox(svg, 'nm-ring-svg'));
+				var txt = common.el('div', 'nm-ring-text');
+				txt.appendChild(common.el('b', cls || '', value));
+				txt.appendChild(common.el('span', '', label));
+				box.appendChild(txt);
+				return box;
+			}
+			rings.appendChild(ring(icons.lossRing(x.loss, 44), _('Loss'), common.fmt.percent(x.loss, 1),
+				(x.loss > 5) ? 'nm-c-bad' : (x.loss > 0 ? 'nm-c-warn' : 'nm-c-ok')));
+			rings.appendChild(ring(icons.successRing(x.online_rate, 44), _('Uptime'),
+				common.fmt.percent(x.online_rate, 0),
+				(x.online_rate >= 99) ? 'nm-c-ok' : (x.online_rate >= 95 ? 'nm-c-warn' : 'nm-c-bad')));
+			c.appendChild(rings);
 			return c;
 		}
 
@@ -197,8 +222,8 @@ return view.extend({
 		function renderRegions() {
 			common.clear(grid);
 			var r = (status && status.regions) || {};
-			grid.appendChild(regionCard(_('China network'), r.cn || {}, icons.regionCN(38)));
-			grid.appendChild(regionCard(_('Overseas network'), r.overseas || {}, icons.regionGlobal(38)));
+			grid.appendChild(regionCard(_('China network'), r.cn || {}, icons.regionCN(84, r.cn || {})));
+			grid.appendChild(regionCard(_('Overseas network'), r.overseas || {}, icons.regionGlobal(84, r.overseas || {})));
 
 			common.clear(lists);
 			lists.appendChild(regionTargets('cn'));

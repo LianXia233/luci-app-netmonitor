@@ -8,6 +8,7 @@
 'use strict';
 'require rpc';
 'require ui';
+'require netmonitor.icons as icons';
 
 var CSS_ID = 'nm-netmonitor-css';
 var I18N_DOMAIN = 'luci-app-netmonitor';
@@ -238,6 +239,20 @@ function svgBox(svg, cls) {
 	return d;
 }
 
+/* 把一个动态 SVG 挂到卡片的右上角。
+ * 使用绝对定位，不参与文档流，因此不会因为图标尺寸影响卡片内的排版。 */
+function cardIcon(card, svg) {
+	var box = el('div', 'nm-card-icon');
+	box.innerHTML = svg;
+	card.appendChild(box);
+	return card;
+}
+
+/* 行内小图标（表格单元格、状态行使用） */
+function inlineIcon(svg) {
+	return svgBox(svg, 'nm-inline-icon');
+}
+
 function clear(node) {
 	while (node && node.firstChild)
 		node.removeChild(node.firstChild);
@@ -307,6 +322,9 @@ function targetCard(t, opts) {
 	nm.appendChild(el('div', 'nm-target-host', (t.host || '') + (t.last_error ? ' · ' + errorText(t.last_error) : '')));
 	head.appendChild(nm);
 	head.appendChild(el('span', regionTagClass(t.region), t.label ? t.label : regionText(t.region)));
+	/* 动态状态图标：在线时旋转虚线环 + 脉冲点；离线时静止的灰色环。
+	 * 与 dotClass() 的纯色圆点不同，它同时表达「是否在流动」的状态。 */
+	head.appendChild(inlineIcon(icons.online(26, t.enabled && t.status === 'online')));
 	card.appendChild(head);
 
 	var lat = el('div', 'nm-target-latency');
@@ -314,6 +332,26 @@ function targetCard(t, opts) {
 	lat.appendChild(el('span', 'nm-latency-unit', 'ms'));
 	lat.appendChild(el('span', 'nm-latency-note', gradeText(t.grade)));
 	card.appendChild(lat);
+
+	/* 环形指标：丢包率与成功率的弧长直接由真实百分比换算，
+	 * 不是固定长度的装饰圆环。 */
+	if (opts.rings !== false) {
+		var rings = el('div', 'nm-target-rings');
+		function ring(svg, label, value, cls) {
+			var box = el('div', 'nm-ring-item');
+			box.appendChild(svgBox(svg, 'nm-ring-svg'));
+			var txt = el('div', 'nm-ring-text');
+			txt.appendChild(el('b', cls || '', value));
+			txt.appendChild(el('span', '', label));
+			box.appendChild(txt);
+			return box;
+		}
+		rings.appendChild(ring(icons.lossRing(t.loss, 44), _('Loss'), percent(t.loss, 1),
+			t.loss > 5 ? 'nm-c-bad' : (t.loss > 0 ? 'nm-c-warn' : 'nm-c-ok')));
+		rings.appendChild(ring(icons.successRing(t.success_rate, 44), _('Uptime'), percent(t.success_rate, 0),
+			t.success_rate >= 99 ? 'nm-c-ok' : (t.success_rate >= 95 ? 'nm-c-warn' : 'nm-c-bad')));
+		card.appendChild(rings);
+	}
 
 	var metrics = el('div', 'nm-target-metrics');
 	function metric(label, value) {
@@ -334,12 +372,27 @@ function targetCard(t, opts) {
 	return card;
 }
 
-/* 顶部 KPI 小卡 */
-function kpiCard(title, value, sub, cls) {
+/* 顶部 KPI 小卡；可选在右上角挂一个与数值同源的动态图标 */
+function kpiCard(title, value, sub, cls, iconSvg) {
 	var c = el('div', 'nm-card');
 	c.appendChild(el('div', 'nm-card-title', title));
 	c.appendChild(el('div', 'nm-card-value ' + (cls || ''), value));
 	if (sub) c.appendChild(el('div', 'nm-card-sub', sub));
+	if (iconSvg) cardIcon(c, iconSvg);
+	return c;
+}
+
+/* 图标 + 实时数值 的一体卡片：图标挂在左侧，右侧为标题 / 数值 / 说明。
+ * 用于把「图标对应的功能」和「该功能的真实读数」放在一起。 */
+function iconCard(title, value, sub, svg, valueCls) {
+	var c = el('div', 'nm-card nm-icon-card');
+	var ico = svgBox(svg, 'nm-icon-card-svg');
+	c.appendChild(ico);
+	var body = el('div', 'nm-icon-card-body');
+	body.appendChild(el('div', 'nm-card-title', title));
+	body.appendChild(el('div', 'nm-card-value ' + (valueCls || ''), value));
+	if (sub) body.appendChild(el('div', 'nm-card-sub', sub));
+	c.appendChild(body);
 	return c;
 }
 
@@ -380,11 +433,15 @@ return Class.extend({
 	errorText: errorText,
 	el: el,
 	svgBox: svgBox,
+	cardIcon: cardIcon,
+	inlineIcon: inlineIcon,
+	icons: icons,
 	clear: clear,
 	notify: notify,
 	sparkline: sparkline,
 	targetCard: targetCard,
 	kpiCard: kpiCard,
+	iconCard: iconCard,
 	banner: banner,
 	palette: ['#2f6fed', '#2e9e5b', '#8a63d2', '#e0762c', '#00a3b4', '#d69a1a', '#cf4437', '#5c6b7a']
 });

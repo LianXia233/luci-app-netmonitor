@@ -33,14 +33,32 @@ return view.extend({
 		var hero = common.el('div', 'nm-hero');
 		var bannerBox = common.el('div', '');
 		var kpi = common.el('div', 'nm-grid');
+		var live = common.el('div', 'nm-grid');
 		var cards = common.el('div', 'nm-grid-wide');
 		var foot = common.el('div', 'nm-card');
 
 		page.appendChild(hero);
 		page.appendChild(bannerBox);
 		page.appendChild(kpi);
+		page.appendChild(live);
 		page.appendChild(cards);
 		page.appendChild(foot);
+
+		/* 阈值来自后端 thresholds（UCI 可配），因此图标等级与后端判定完全一致，
+		 * 不会出现「前端显示良好、后端已判严重」的错位。 */
+		function gradeOf(ms, th) {
+			if (ms == null || isNaN(ms)) return 'unknown';
+			th = th || {};
+			var ex = parseFloat(th.latency_excellent) || 50;
+			var gd = parseFloat(th.latency_good) || 100;
+			var fr = parseFloat(th.latency_fair) || 200;
+			var pr = parseFloat(th.latency_poor) || 500;
+			if (ms <= ex) return 'excellent';
+			if (ms <= gd) return 'good';
+			if (ms <= fr) return 'fair';
+			if (ms <= pr) return 'poor';
+			return 'severe';
+		}
 
 		function renderHero(d) {
 			common.clear(hero);
@@ -113,8 +131,10 @@ return view.extend({
 			var r = d.regions || {};
 			var cn = r.cn || {};
 			var ov = r.overseas || {};
+			var list = d.targets || [];
+			var th = d.thresholds || {};
 
-			function regionCard(title, x) {
+			function regionCard(title, x, svg) {
 				var c = common.el('div', 'nm-card');
 				var head = common.el('div', 'nm-row');
 				head.appendChild(common.el('span', 'nm-card-title', title));
@@ -126,19 +146,75 @@ return view.extend({
 					_('Avg') + ' ' + common.fmt.latency(x.avg) + ' ms · ' +
 					_('P95') + ' ' + common.fmt.latency(x.p95) + ' ms · ' +
 					_('Loss') + ' ' + common.fmt.percent(x.loss)));
+				common.cardIcon(c, svg);
 				return c;
 			}
 
+			var curGrade = gradeOf(o.current, th);
+
 			kpi.appendChild(common.kpiCard(_('Average latency'), common.fmt.latency(o.avg) + ' ms',
-				_('Across enabled targets'), 'nm-c-ok'));
+				_('Across enabled targets'), 'nm-c-ok', icons.trend(52)));
 			kpi.appendChild(common.kpiCard(_('Current latency'), common.fmt.latency(o.current) + ' ms',
-				_('Latest probe round'), 'nm-c-good'));
+				_('Latest probe round'), common.gradeClass(curGrade),
+				icons.latencyDial(o.current, curGrade, 52)));
 			kpi.appendChild(common.kpiCard(_('Packet loss'), common.fmt.percent(o.loss),
-				_('Weighted by samples'), (o.loss > 5 ? 'nm-c-warn' : '')));
-			kpi.appendChild(regionCard(_('China network'), cn));
-			kpi.appendChild(regionCard(_('Overseas network'), ov));
+				_('Weighted by samples'), (o.loss > 5 ? 'nm-c-warn' : 'nm-c-ok'),
+				icons.packetLoss(o.loss, 52)));
+			kpi.appendChild(regionCard(_('China network'), cn, icons.regionCN(52, cn, cn.avg)));
+			kpi.appendChild(regionCard(_('Overseas network'), ov, icons.regionGlobal(52, ov, ov.avg)));
 			kpi.appendChild(common.kpiCard(_('Online targets'), String(o.online || 0),
-				_('Abnormal') + ': ' + (o.offline || 0), 'nm-c-ok'));
+				_('Abnormal') + ': ' + (o.offline || 0), 'nm-c-ok', icons.multiTarget(list, 52)));
+		}
+
+		/* 实时指标区：每一格都是「图标 + 该图标所代表功能的真实读数」。
+		 * 图标本身随数据变化：圆环弧长 = 百分比、指针 = 延迟等级、
+		 * 表盘指针 / 时钟指针 = 真实时间与数值，不是固定装饰。 */
+		function renderLive(d) {
+			common.clear(live);
+			var o = d.overall || {};
+			var list = d.targets || [];
+			var cfgv = cfg || {};
+
+			/* 成功率为按样本数加权，样本为 0 时不伪造 100% */
+			var acc = 0, samples = 0;
+			for (var i = 0; i < list.length; i++) {
+				if (!list[i].enabled) continue;
+				var s = list[i].samples || 0;
+				acc += (list[i].success_rate || 0) * s;
+				samples += s;
+			}
+			var rate = (samples > 0) ? (acc / samples) : null;
+
+			live.appendChild(common.iconCard(_('Success rate'), common.fmt.percent(rate, 1),
+				_('Samples') + ': ' + samples, icons.successRing(rate, 64),
+				rate == null ? '' : (rate >= 99 ? 'nm-c-ok' : (rate >= 95 ? 'nm-c-warn' : 'nm-c-bad'))));
+
+			live.appendChild(common.iconCard(_('Abnormal'), String(o.offline || 0) + ' / ' + String(o.total || 0),
+				_('Online') + ': ' + (o.online || 0), icons.bell(o.offline, 64),
+				(o.offline > 0) ? 'nm-c-bad' : 'nm-c-ok'));
+
+			live.appendChild(common.iconCard(_('Last check'), common.fmt.ago(d.tick),
+				common.fmt.clock(d.tick), icons.clock(d.tick, 64)));
+
+			live.appendChild(common.iconCard(_('Probe settings'),
+				(cfgv.interval || 10) + 's / ' + (cfgv.timeout || 3) + 's',
+				_('Interval') + ' / ' + _('Timeout'), icons.gear(64)));
+
+			live.appendChild(common.iconCard(_('Data source'),
+				(cfgv.persistence === '1') ? _('Persistent history') : _('In-memory ring buffer'),
+				_('Retention') + ': ' + (cfgv.history || '24h'), icons.database(64)));
+
+			var fam = cfgv.address_family || 'auto';
+			var v6 = false;
+			for (var j = 0; j < list.length; j++) {
+				var h = String(list[j].host || '');
+				if (list[j].family === 'ipv6' || h.indexOf(':') >= 0) v6 = true;
+			}
+			var v4 = (fam !== 'ipv6');
+			if (fam === 'ipv6') v6 = true;
+			live.appendChild(common.iconCard(_('Dual stack'),
+				(v4 && v6) ? 'IPv4 + IPv6' : (v6 ? 'IPv6' : 'IPv4'),
+				_('Address family') + ': ' + fam, icons.dualStack(fam, v4, v6, 64)));
 		}
 
 		function renderCards(d) {
@@ -156,10 +232,21 @@ return view.extend({
 		function renderFoot(d) {
 			common.clear(foot);
 			var row = common.el('div', 'nm-row');
-			row.appendChild(common.svgBox(icons.service(d.running, 30), ''));
+			row.appendChild(common.inlineIcon(icons.service(d.running, 30)));
 			row.appendChild(common.el('div', '',
 				(d.running ? _('Service running') : _('Service stopped')) +
 				' · ' + _('Last update') + ': ' + common.fmt.ago(d.tick)));
+
+			/* 柱状图高度取各目标当前延迟，是真实采样而非固定图像 */
+			var bars = [];
+			var tl = d.targets || [];
+			for (var i = 0; i < tl.length && i < 4; i++)
+				bars.push(tl[i].latency);
+			var lb = common.el('div', 'nm-row');
+			lb.appendChild(common.inlineIcon(icons.liveBars(bars, 34)));
+			lb.appendChild(common.el('span', 'nm-card-sub', _('Live sampling')));
+			row.appendChild(lb);
+
 			row.appendChild(common.el('div', 'nm-spacer'));
 
 			function btn(label, fn, cls) {
@@ -186,6 +273,7 @@ return view.extend({
 			renderHero(d);
 			renderBanners(d);
 			renderKpi(d);
+			renderLive(d);
 			renderCards(d);
 			renderFoot(d);
 		}

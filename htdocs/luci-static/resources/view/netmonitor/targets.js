@@ -5,6 +5,7 @@
 'use strict';
 'require view';
 'require netmonitor.common as common';
+'require netmonitor.icons as icons';
 
 return view.extend({
 	load: function() {
@@ -53,8 +54,18 @@ return view.extend({
 		}));
 		row.appendChild(toolBtn(_('Refresh'), function() { return Promise.resolve(); }));
 		row.appendChild(common.el('div', 'nm-spacer'));
-		row.appendChild(common.el('span', 'nm-card-sub',
+
+		/* 工具条右侧：多目标图标的圆点数量与目标配置一致，蓝色表示已启用、
+		 * 灰色表示已禁用（本页不采集延迟，因此图标只表达配置状态，不冒充链路健康）；
+		 * 齿轮图标与左侧的全局间隔 / 超时数值一一对应。 */
+		var summary = common.el('div', 'nm-row');
+		var sumIconBox = common.el('span', 'nm-inline-icon');
+		sumIconBox.innerHTML = icons.multiTarget(targets, 34);
+		summary.appendChild(sumIconBox);
+		summary.appendChild(common.inlineIcon(icons.gear(30)));
+		summary.appendChild(common.el('span', 'nm-card-sub',
 			_('Global interval') + ': ' + (cfg.interval || 10) + 's · ' + _('Timeout') + ': ' + (cfg.timeout || 3) + 's'));
+		row.appendChild(summary);
 		bar.appendChild(row);
 		page.appendChild(bar);
 
@@ -72,9 +83,13 @@ return view.extend({
 		wrap.appendChild(table);
 		page.appendChild(wrap);
 
-		var tip = common.el('div', 'nm-card-sub');
-		tip.innerHTML = _('Interval and timeout set to 0 inherit the global settings.');
-		page.appendChild(tip);
+		var tipRow = common.el('div', 'nm-row');
+		tipRow.appendChild(common.inlineIcon(icons.responsive(30)));
+		var tipText = common.el('div', 'nm-card-sub');
+		tipText.innerHTML = _('Interval and timeout set to 0 inherit the global settings.') +
+			'<br>' + _('The table scrolls horizontally on small screens.');
+		tipRow.appendChild(tipText);
+		page.appendChild(tipRow);
 
 		function selectedIds() {
 			var ids = [];
@@ -86,6 +101,7 @@ return view.extend({
 		function renderList(list) {
 			common.clear(tbody);
 			targets = list;
+			sumIconBox.innerHTML = icons.multiTarget(list, 34);
 			if (!list.length) {
 				var tr0 = common.el('tr', '');
 				var td0 = common.el('td', 'nm-empty', _('No targets'));
@@ -117,12 +133,19 @@ return view.extend({
 					tr.appendChild(common.el('td', '', t.label || '—'));
 
 					var fam = { auto: _('Auto'), ipv4: _('IPv4'), ipv6: _('IPv6'), both: _('IPv4 + IPv6') };
-					tr.appendChild(common.el('td', '', fam[t.family] || t.family));
+					var tdFam = common.el('td', '');
+					tdFam.style.whiteSpace = 'nowrap';
+					/* 双栈图标直接反映该目标配置的地址族：ipv4/ipv6 时另一侧变灰 */
+					tdFam.appendChild(common.inlineIcon(icons.dualStack(t.family, true, true, 22)));
+					tdFam.appendChild(document.createTextNode(' ' + (fam[t.family] || t.family)));
+					tr.appendChild(tdFam);
 					tr.appendChild(common.el('td', 'nm-num', (t.interval || 0) === 0 ? _('Global') : (t.interval + 's')));
 					tr.appendChild(common.el('td', 'nm-num', (t.timeout || 0) === 0 ? _('Global') : (t.timeout + 's')));
 					tr.appendChild(common.el('td', '', t.interface || '—'));
 
 					var tdEn = common.el('td', '');
+					tdEn.style.whiteSpace = 'nowrap';
+					tdEn.appendChild(common.inlineIcon(icons.online(20, !!t.enabled)));
 					var lab = common.el('label', 'nm-switch');
 					var inp = common.el('input', '');
 					inp.type = 'checkbox';

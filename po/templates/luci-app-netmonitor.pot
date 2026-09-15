@@ -54,16 +54,16 @@ msgstr ""
 msgid "Check failed"
 msgstr ""
 
-msgid "Avg"
-msgstr ""
-
-msgid "P95"
-msgstr ""
-
 msgid "Loss"
 msgstr ""
 
 msgid "Uptime"
+msgstr ""
+
+msgid "Avg"
+msgstr ""
+
+msgid "P95"
 msgstr ""
 
 msgid "Time range"
@@ -88,6 +88,12 @@ msgid "Min"
 msgstr ""
 
 msgid "Range"
+msgstr ""
+
+msgid "Live sampling"
+msgstr ""
+
+msgid "Selected targets"
 msgstr ""
 
 msgid "Data source: persistent history on flash"
@@ -126,6 +132,21 @@ msgstr ""
 msgid "Latency trend"
 msgstr ""
 
+msgid "Target count"
+msgstr ""
+
+msgid "Average latency"
+msgstr ""
+
+msgid "Packet loss"
+msgstr ""
+
+msgid "Weighted by samples"
+msgstr ""
+
+msgid "Success rate"
+msgstr ""
+
 msgid "No data in this range"
 msgstr ""
 
@@ -156,16 +177,10 @@ msgstr ""
 msgid "Current latency"
 msgstr ""
 
-msgid "Packet loss"
-msgstr ""
-
 msgid "Online"
 msgstr ""
 
 msgid "Abnormal"
-msgstr ""
-
-msgid "Target count"
 msgstr ""
 
 msgid "Background service is not running. Monitoring is stopped."
@@ -177,16 +192,10 @@ msgstr ""
 msgid "No enabled targets. Go to Targets to add one."
 msgstr ""
 
-msgid "Average latency"
-msgstr ""
-
 msgid "Across enabled targets"
 msgstr ""
 
 msgid "Latest probe round"
-msgstr ""
-
-msgid "Weighted by samples"
 msgstr ""
 
 msgid "China network"
@@ -196,6 +205,33 @@ msgid "Overseas network"
 msgstr ""
 
 msgid "Online targets"
+msgstr ""
+
+msgid "Last check"
+msgstr ""
+
+msgid "Probe settings"
+msgstr ""
+
+msgid "Interval"
+msgstr ""
+
+msgid "Data source"
+msgstr ""
+
+msgid "Persistent history"
+msgstr ""
+
+msgid "In-memory ring buffer"
+msgstr ""
+
+msgid "Retention"
+msgstr ""
+
+msgid "Dual stack"
+msgstr ""
+
+msgid "Address family"
 msgstr ""
 
 msgid "No targets configured"
@@ -255,16 +291,10 @@ msgstr ""
 msgid "Fails"
 msgstr ""
 
-msgid "Last check"
-msgstr ""
-
 msgid "No matching targets"
 msgstr ""
 
 msgid "Updated"
-msgstr ""
-
-msgid "Interval"
 msgstr ""
 
 msgid "UI refresh"
@@ -294,6 +324,39 @@ msgstr ""
 msgid "History cleared"
 msgstr ""
 
+msgid "Check interval"
+msgstr ""
+
+msgid "Packets per probe"
+msgstr ""
+
+msgid "Probe timeout"
+msgstr ""
+
+msgid "Concurrent probes"
+msgstr ""
+
+msgid "Enabled"
+msgstr ""
+
+msgid "Master switch"
+msgstr ""
+
+msgid "Enable notification"
+msgstr ""
+
+msgid "Reserved"
+msgstr ""
+
+msgid "Thresholds"
+msgstr ""
+
+msgid "UI refresh interval"
+msgstr ""
+
+msgid "Independent from the probe interval"
+msgstr ""
+
 msgid "Global settings"
 msgstr ""
 
@@ -318,19 +381,10 @@ msgstr ""
 msgid "Per-packet wait time before a probe is considered lost."
 msgstr ""
 
-msgid "Packets per probe"
-msgstr ""
-
 msgid "Higher values give better loss statistics but cost more time."
 msgstr ""
 
-msgid "Concurrent probes"
-msgstr ""
-
 msgid "Maximum number of targets probed in parallel."
-msgstr ""
-
-msgid "Address family"
 msgstr ""
 
 msgid "Auto"
@@ -358,9 +412,6 @@ msgid "Bind probes to a specific source IP address."
 msgstr ""
 
 msgid "Data retention"
-msgstr ""
-
-msgid "Persistent history"
 msgstr ""
 
 msgid "Write aggregated samples to flash periodically. Disabled by default to protect flash lifetime."
@@ -400,9 +451,6 @@ msgid "In-memory samples per target"
 msgstr ""
 
 msgid "Ring buffer size in /tmp. 4320 samples at 10s interval covers about 12 hours."
-msgstr ""
-
-msgid "Thresholds"
 msgstr ""
 
 msgid "Excellent below (ms)"
@@ -459,9 +507,6 @@ msgstr ""
 msgid "Notification (reserved)"
 msgstr ""
 
-msgid "Enable notification"
-msgstr ""
-
 msgid "Interface is reserved for future webhook / Telegram / WeCom / DingTalk / mail support."
 msgstr ""
 
@@ -495,13 +540,13 @@ msgstr ""
 msgid "Interface"
 msgstr ""
 
-msgid "Enabled"
-msgstr ""
-
 msgid "Actions"
 msgstr ""
 
 msgid "Interval and timeout set to 0 inherit the global settings."
+msgstr ""
+
+msgid "The table scrolls horizontally on small screens."
 msgstr ""
 
 msgid "IPv4"

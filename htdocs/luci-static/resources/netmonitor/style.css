@@ -26,6 +26,11 @@
 	--nm-bad: #cf4437;
 	--nm-idle: #8a93a3;
 
+	/* 动态 SVG 图标专用配色：浅色主题用可辨识的深色变体，
+	 * 深色主题下切换到参考稿的高亮霓虹色，保证两套主题都有足够对比度。 */
+	--nm-cyan: #0f8fb8;
+	--nm-blue: #2f6fed;
+
 	--nm-radius: 14px;
 	--nm-radius-sm: 9px;
 	--nm-gap: 14px;
@@ -43,6 +48,9 @@
 		--nm-card-hi: var(--lighter-bg-color, #23282f);
 		--nm-border: var(--border-color, rgba(255, 255, 255, 0.10));
 		--nm-muted: var(--light-text-color, #98a1b0);
+
+		--nm-cyan: #36d9ff;
+		--nm-blue: #72a9ff;
 	}
 }
 
@@ -277,6 +285,69 @@
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: 4px 12px;
+}
+
+/* 目标卡片内的环形指标行：左侧是真实百分比对应的弧长圆环，
+ * 右侧是数值与名称，两列在窄屏下自动换行。 */
+.nm-target-rings {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px 18px;
+	padding: 6px 0 2px 0;
+	border-top: 1px solid var(--nm-border);
+	margin-top: 2px;
+}
+
+.nm-ring-item {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	min-width: 0;
+}
+
+.nm-ring-svg {
+	flex: 0 0 auto;
+	line-height: 0;
+}
+
+.nm-ring-text {
+	display: flex;
+	flex-direction: column;
+	line-height: 1.25;
+	min-width: 0;
+}
+
+.nm-ring-text b {
+	font-size: 14px;
+	font-weight: 650;
+	font-variant-numeric: tabular-nums;
+}
+
+.nm-ring-text span {
+	font-size: 11px;
+	color: var(--nm-muted);
+}
+
+/* 图标 + 数值一体卡片 */
+.nm-icon-card {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-width: 0;
+}
+
+.nm-icon-card-svg {
+	flex: 0 0 auto;
+	line-height: 0;
+}
+
+.nm-icon-card-body {
+	min-width: 0;
+	flex: 1 1 auto;
+}
+
+.nm-icon-card-body .nm-card-value {
+	font-size: 21px;
 }
 
 .nm-metric {
@@ -617,6 +688,76 @@
 }
 
 .nm-a-blink { animation: nm-blink 1.6s ease-in-out infinite; }
+
+/* ------------------------------------------------- 动态 SVG 图标（v3 动画集）
+ *
+ * 由参考稿 openwrt-netmonitor-dynamic-svg-v3 的动画方案移植而来，并统一收敛到
+ * .nm- 命名空间。设计要点：
+ *   1. 只驱动 stroke-dashoffset / opacity / transform 三个属性，不触碰
+ *      filter、blur、box-shadow，避免在低端路由器上的合成开销。
+ *   2. 虚线位移量取虚线周期的整数倍（dasharray 5 9 的周期为 14，位移 70 = 5 个
+ *      周期），首尾状态严格重合，循环处不会出现跳帧。
+ *   3. transform 一律配合 transform-box:fill-box 使用，绕元素自身包围盒旋转/
+ *      缩放，规避浏览器对 SVG transform-origin 的解析差异。
+ */
+
+@keyframes nm-dash-v3 { to { stroke-dashoffset: -70; } }
+@keyframes nm-dash-v3-rev { to { stroke-dashoffset: 70; } }
+@keyframes nm-pulse-soft { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+@keyframes nm-ring-scale { 0%, 100% { transform: scale(0.88); opacity: 0.35; } 50% { transform: scale(1.04); opacity: 1; } }
+@keyframes nm-bars { 0%, 100% { transform: scaleY(0.55); } 50% { transform: scaleY(1); } }
+@keyframes nm-blink-soft { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
+@keyframes nm-rotate { to { transform: rotate(360deg); } }
+
+.nm-an-dash { stroke-dasharray: 5 9; animation: nm-dash-v3 2.2s linear infinite; }
+.nm-an-dash-rev { stroke-dasharray: 5 9; animation: nm-dash-v3-rev 2.6s linear infinite; }
+.nm-an-pulse { animation: nm-pulse-soft 1.6s ease-in-out infinite; }
+.nm-an-ring { transform-box: fill-box; transform-origin: center; animation: nm-ring-scale 1.9s ease-in-out infinite; }
+.nm-an-bar { transform-box: fill-box; transform-origin: center bottom; animation: nm-bars 1.5s ease-in-out infinite; }
+.nm-an-blink { animation: nm-blink-soft 1.2s ease-in-out infinite; }
+.nm-an-spin { transform-box: fill-box; transform-origin: center; animation: nm-rotate 5s linear infinite; }
+
+/* 图标配色类：全部走主题变量，浅色 / 深色主题自动切换 */
+.nm-fill-green { fill: var(--nm-ok); }
+.nm-str-green { stroke: var(--nm-ok); }
+.nm-fill-yellow { fill: var(--nm-warn); }
+.nm-str-yellow { stroke: var(--nm-warn); }
+.nm-fill-orange { fill: var(--nm-poor); }
+.nm-str-orange { stroke: var(--nm-poor); }
+.nm-fill-red { fill: var(--nm-bad); }
+.nm-str-red { stroke: var(--nm-bad); }
+.nm-fill-idle { fill: var(--nm-idle); }
+.nm-str-idle { stroke: var(--nm-idle); }
+.nm-fill-accent { fill: var(--nm-accent); }
+.nm-str-accent { stroke: var(--nm-accent); }
+.nm-fill-cyan { fill: var(--nm-cyan); }
+.nm-str-cyan { stroke: var(--nm-cyan); }
+.nm-fill-blue { fill: var(--nm-blue); }
+.nm-str-blue { stroke: var(--nm-blue); }
+.nm-fill-line { fill: var(--nm-border); }
+.nm-str-line { stroke: var(--nm-border); }
+.nm-fill-fg { fill: var(--nm-fg); }
+.nm-str-fg { stroke: var(--nm-fg); }
+.nm-fill-muted { fill: var(--nm-muted); }
+.nm-str-muted { stroke: var(--nm-muted); }
+
+/* 卡片右上角的装饰图标容器 */
+.nm-card-icon {
+	position: absolute;
+	top: 8px;
+	right: 10px;
+	opacity: 0.95;
+	pointer-events: none;
+	line-height: 0;
+}
+
+/* 行内图标容器（表格、列表内使用，避免 baseline 造成的错位） */
+.nm-inline-icon {
+	display: inline-flex;
+	align-items: center;
+	vertical-align: middle;
+	line-height: 0;
+}
 
 /* 尊重用户的减少动效偏好，同时可在低端设备手动关闭动画 */
 @media (prefers-reduced-motion: reduce) {

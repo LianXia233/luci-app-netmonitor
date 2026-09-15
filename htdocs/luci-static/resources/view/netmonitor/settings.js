@@ -73,6 +73,57 @@ return view.extend({
 		svc.appendChild(clearRow);
 		page.appendChild(svc);
 
+		/* 当前生效配置：数值直接取自 UCI，图标与数值一一对应。
+		 * 探测间隔→ping、超时/并发→齿轮、持久化→数据库、地址族→双栈、
+		 * 通知→铃铛、界面刷新→时钟。 */
+		function ucfg(key, dflt) {
+			var v = null;
+			try { v = uci.get('netmonitor', 'global', key); } catch (e) { v = null; }
+			return (v == null || v === '') ? dflt : v;
+		}
+
+		var strip = common.el('div', 'nm-grid');
+		page.appendChild(strip);
+
+		function renderStrip() {
+			common.clear(strip);
+			var interval = String(ucfg('interval', '10'));
+			var timeout = String(ucfg('timeout', '3'));
+			var count = String(ucfg('count', '1'));
+			var conc = String(ucfg('concurrency', '5'));
+			var persist = String(ucfg('persistence', '0'));
+			var hist = String(ucfg('history', '24h'));
+			var fam = String(ucfg('address_family', 'auto'));
+			var notify = String(ucfg('notify_enabled', '0'));
+			var enabled = String(ucfg('enabled', '1'));
+			var v6 = (fam === 'ipv6' || fam === 'both' || fam === 'auto');
+
+			strip.appendChild(common.iconCard(_('Check interval'), interval + ' s',
+				_('Packets per probe') + ': ' + count,
+				icons.ping(58, { grade: 'good' }), 'nm-c-ok'));
+
+			strip.appendChild(common.iconCard(_('Probe timeout'), timeout + ' s',
+				_('Concurrent probes') + ': ' + conc, icons.gear(58)));
+
+			strip.appendChild(common.iconCard(_('Persistent history'),
+				(persist === '1') ? _('Enabled') : _('Disabled'),
+				_('Retention') + ': ' + hist, icons.database(58),
+				(persist === '1') ? 'nm-c-warn' : 'nm-c-ok'));
+
+			strip.appendChild(common.iconCard(_('Address family'), fam,
+				_('Master switch') + ': ' + ((enabled === '1') ? _('Enabled') : _('Disabled')),
+				icons.dualStack(fam, fam !== 'ipv6', v6, 58)));
+
+			strip.appendChild(common.iconCard(_('Enable notification'),
+				(notify === '1') ? _('Enabled') : _('Disabled'),
+				_('Reserved') + ' · ' + _('Thresholds'), icons.bell(0, 58)));
+
+			strip.appendChild(common.iconCard(_('UI refresh interval'),
+				String(ucfg('ui_refresh', '2')) + ' s', _('Independent from the probe interval'),
+				icons.clock(null, 58)));
+		}
+		renderStrip();
+
 		function refreshSvc() {
 			return common.api.serviceStatus().then(function(d) {
 				common.clear(svcIcon);
