@@ -63,10 +63,22 @@ LUCI_DEPENDS:= \
 NETMONITOR_LUCI_MK:=$(firstword $(wildcard \
 	$(TOPDIR)/feeds/luci/luci.mk \
 	$(TOPDIR)/package/feeds/luci/luci.mk \
-	$(TOPDIR)/../feeds/luci/luci.mk))
+	$(TOPDIR)/../feeds/luci/luci.mk \
+	$(TOPDIR)/feeds/*/luci.mk \
+	$(TOPDIR)/package/feeds/*/luci.mk))
 
 ifeq ($(NETMONITOR_LUCI_MK),)
 $(error Cannot locate luci.mk - please build this package inside an OpenWrt source tree with the LuCI feed installed)
 endif
 
 include $(NETMONITOR_LUCI_MK)
+
+# 必须保留本文件末尾的“构建系统签名”注释（含字面量 call BuildPackage）。
+# OpenWrt 的包元数据扫描（include/scan.mk 第 77 行）在生成待扫描文件清单时，会 grep 每个
+# package/*/Makefile 是否含有 "call BuildPackage"（或 Build/DefaultTargets / KernelPackage）。
+# 本包只 include luci.mk，自身文本里没有该字样（luci.mk 内部的 $(eval $(call BuildPackage,...))
+# 是加载后才执行的，不计入扫描 grep），所以若缺了下面这行注释，扫描阶段根本不会加载本包，
+# DUMP 子 make 不被触发，本包就不在 tmp/.packageinfo / Kconfig 里，package/<name>/compile
+# 目标随之消失，编译报 “No rule to make target”。这是上游 luci feed 所有应用 Makefile
+# 的标准写法，不可删除。
+# call BuildPackage - OpenWrt buildroot signature

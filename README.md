@@ -713,6 +713,48 @@ Config.in:153: glob failed: No files found "Config-build.in"
   `Source-Makefile:` 路径，直接看清污染来自哪些目录；
 - `target symbols:` 必须非 0（`.config` 含目标符号，说明 Kconfig 写出成功）。
 
+### 12.10 扫描阶段被文件清单排除：缺少“构建系统签名”注释，使包彻底不进 `.packageinfo`
+
+**现象**：`PKG_NAME` 环境变量污染（12.9）修复后，诊断输出从“同名条目过多（146 条）”
+转变为“完全为 0”：
+
+```
+Package 行数: 0
+config PACKAGE_luci-app-netmonitor 出现次数: 0
+==> packageinfo entries for luci-app-netmonitor: 0
+make[1]: *** No rule to make target 'package/luci-app-netmonitor/compile'.  Stop.
+```
+
+注意与 12.9 的区别：12.9 是同名条目“过多”，这里是“完全为 0”。同时 `tmp/.packageinfo`
+里**其它** luci 包（luci-base、luci-app-firewall、luci-theme-bootstrap 等）都在，唯独本包
+缺席——说明扫描机制本身工作正常，是本包没有被扫描到。
+
+**根因**：`include/scan.mk` 第 77 行用
+
+```sh
+find -L $(SCAN_DIR) -mindepth 1 -name Makefile | xargs grep -aHE 'call (Build/DefaultTargets|BuildPackage|KernelPackage)'
+```
+
+生成待扫描文件清单（FILELIST）。只有 Makefile **文本里字面量**出现 `call BuildPackage`
+（或其变体）的包才会被纳入扫描。本包在 12.9 修复后只保留了两行 `include`，文本里没有
+`call BuildPackage`，于是扫描阶段根本不会加载本包，DUMP 子 make 不被触发，本包自然不出现在
+`.packageinfo`、Kconfig 里也没有 `PACKAGE_luci-app-netmonitor` 符号，`package/<name>/compile`
+目标随之消失。
+
+这与“luci.mk 找不到”是**不同**的失败——后者会在 `logs/package/luci-app-netmonitor/dump.txt`
+里留下 `Cannot locate luci.mk` 报错；而本问题发生时**根本没有 dump.txt**，因为扫描没轮到本包。
+
+**修法**：在 `Makefile` 末尾保留上游 luci feed 的标准签名注释（`luci.mk` 内部的
+`$(eval $(call BuildPackage,...))` 不计入扫描 grep，必须靠这行注释补上）：
+
+```makefile
+# call BuildPackage - OpenWrt buildroot signature
+```
+
+**判据**：修复后再跑 CI，`Package 行数` 应为 **1**，`package/luci-app-netmonitor/compile`
+目标出现，编译进入 `Build package/luci-app-netmonitor` 阶段；本包 i18n 包
+`luci-i18n-netmonitor-zh_Hans` 也随之生成。
+
 ---
 
 ## 十三、兼容性
