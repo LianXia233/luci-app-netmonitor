@@ -11,8 +11,13 @@ on:
 permissions:
   contents: write
 
+# 注意：这里绝不能使用 PKG_NAME 作为变量名。
+# OpenWrt 的包元数据扫描链路会把环境变量 PKG_NAME 传进每个包的 DUMP 子 make，
+# 而 luci.mk 用 `PKG_NAME?=$(LUCI_NAME)` 推导包名——make 视环境变量为已定义，
+# `?=` 不会覆盖，结果整个 luci feed 的包名都被钉成同一个值，
+# Kconfig 出现上百个包共用一个 symbol，编译目标彻底消失。
 env:
-  PKG_NAME: luci-app-netmonitor
+  NM_PKG: luci-app-netmonitor
 
 jobs:
   build:
@@ -38,7 +43,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          path: ${{ env.PKG_NAME }}
+          path: ${{ env.NM_PKG }}
 
       - name: Locate SDK and prepare package
         shell: sh
@@ -54,15 +59,17 @@ jobs:
             ls -la /
             exit 1
           fi
+          # PKG_NAME 是 OpenWrt 元数据扫描链路的敏感变量，见文件头注释
+          unset PKG_NAME || true
           echo "SDK_DIR=$SDK_DIR" >> "$GITHUB_ENV"
           echo "SDK located at: $SDK_DIR"
 
           mkdir -p "$SDK_DIR/package"
-          rm -rf "$SDK_DIR/package/$PKG_NAME"
-          cp -r "$GITHUB_WORKSPACE/$PKG_NAME" "$SDK_DIR/package/$PKG_NAME"
+          rm -rf "$SDK_DIR/package/$NM_PKG"
+          cp -r "$GITHUB_WORKSPACE/$NM_PKG" "$SDK_DIR/package/$NM_PKG"
 
           # 源码里带的排障工作区不参与打包
-          rm -rf "$SDK_DIR/package/$PKG_NAME/tests/.tmp"
+          rm -rf "$SDK_DIR/package/$NM_PKG/tests/.tmp"
 
       - name: Update feeds and install LuCI dependencies
         shell: sh
@@ -71,11 +78,9 @@ jobs:
           cd "$SDK_DIR"
           ./scripts/feeds update -a
 
-          # 只安装 luci feed。
-          # 全量 install -a 会把 packages feed 的 attendedsysupgrade-common 一并引入，
-          # 该包在 SDK 预置 Kconfig 中会选中 rpcd，从而与本包的依赖形成递归依赖，
-          # 使 make defconfig 报错且不产出可用 .config。
-          # 本包依赖全部落在 luci feed 与 SDK 自带组件内，不需要 packages feed。
+          # 只安装 luci feed：本包依赖全部落在 luci feed 与 SDK 自带组件内。
+          # 不引入 packages feed 可缩小元数据解析面、缩短 defconfig 时间，
+          # 同时避免无关包的 Kconfig 噪音干扰诊断输出。
           ./scripts/feeds install -a -p luci
 
           echo "==> installed feeds:"
@@ -141,14 +146,14 @@ jobs:
           fi
           echo "==> packageinfo entries for luci-app-netmonitor: $(grep -c '^Package: luci-app-netmonitor$' tmp/.packageinfo || true)"
 
-          make package/$PKG_NAME/compile V=s
+          make package/$NM_PKG/compile V=s
 
           # luci.mk 会依据 po/ 下的语言目录生成对应的
           # luci-i18n-<pkg>-<lang> 包，这里逐个编译
-          for lang in $(ls package/$PKG_NAME/po); do
+          for lang in $(ls package/$NM_PKG/po); do
             [ "$lang" = "templates" ] && continue
-            [ -d "package/$PKG_NAME/po/$lang" ] || continue
-            i18n="luci-i18n-$PKG_NAME-$lang"
+            [ -d "package/$NM_PKG/po/$lang" ] || continue
+            i18n="luci-i18n-$NM_PKG-$lang"
             echo "==> building $i18n"
             make package/$i18n/compile V=s || echo "::warning::skip $i18n"
           done
@@ -178,7 +183,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.PKG_NAME }}-${{ matrix.format }}
+          name: ${{ env.NM_PKG }}-${{ matrix.format }}
           path: dist-${{ matrix.format }}/*
           if-no-files-found: error
 
