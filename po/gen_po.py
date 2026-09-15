@@ -519,7 +519,11 @@ def collect():
             seen.add(s)
             strings.append(s)
 
-    for dirpath, _dirnames, filenames in os.walk(RES):
+    for dirpath, dirnames, filenames in os.walk(RES):
+        # 目录枚举顺序由文件系统决定（NTFS 与 ext4 就不一样），只排序 filenames 不够：
+        # 子目录的先后会直接改变产出 po/pot 里条目的顺序，CI 的
+        # `git diff --exit-code -- po/` 于是在换机器后必然报「与源码不一致」。
+        dirnames.sort()
         for fn in sorted(filenames):
             if not fn.endswith('.js'):
                 continue
