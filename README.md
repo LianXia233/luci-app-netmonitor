@@ -781,42 +781,54 @@ for i18n in $(grep -oE '^Package: luci-i18n-netmonitor-[A-Za-z0-9._-]+$' tmp/.pa
 done
 ```
 
-### 12.12 即便名字正确，i18n 包没被 `.config` 选中仍会 `No rule to make target`
+### 12.12 luci.mk 不注册 i18n 子包的独立 `compile` 目标：不要单独编译，改校验产物
 
-**现象**：`b7638de` 应用 12.11 的修法后，循环已能正确从 `tmp/.packageinfo` 取出真实 i18n 包名
-`luci-i18n-netmonitor-zh-cn`，但日志里依旧冒出误导性警告：
-
+**现象**：`b7638de` 应用 12.11 后，循环已能正确取出真实 i18n 包名 `luci-i18n-netmonitor-zh-cn`，
+但日志里依旧冒出误导性警告：
 ```
 make[1]: *** No rule to make target 'package/luci-i18n-netmonitor-zh-cn/compile'.  Stop.
 ##[warning]skip luci-i18n-netmonitor-zh-cn
 ```
-
 构建结论仍是 success、i18n 的 `.ipk`/`.apk` 也确实进了产物——但循环本身的 `make package/.../compile`
-从未成功过，警告纯属“被吞掉的真实失败”。
+从未成功过，警告是“被吞掉的真实失败”。
 
-**根因**：`tmp/.packageinfo` 里有 `luci-i18n-netmonitor-zh-cn` 这个包，不等于 `package/<name>/compile`
-目标存在。OpenWrt 的 `package/Makefile` 由 `subdir.mk` 在**该包被 `.config` 选中**
-（`CONFIG_PACKAGE_*` 为 `y`）时才为其生成 `compile` 目标；只出现在 `.packageinfo` 而未启用 symbol，
-目标就是空的。前序步骤只在 `.config` 里启用了主包 `CONFIG_PACKAGE_luci-app-netmonitor=y`，
-i18n 包从未被选中，所以显式编译它必然报“无此目标”。i18n 包之所以仍在产物里，是主包编译
-（`luci.mk` 的 `LuciTranslation`）顺带构建的副作用——这正是 12.11 指出的脆弱点。
+**两个被证伪的假设**（记下来避免重走）：
+1. “i18n 循环只是手算错名” → 12.11 已修正名字，警告仍在，说明不是名字问题。
+2. “i18n 包没被 `.config` 选中，所以 `package/<name>/compile` 目标不存在” → 错。
+   在 8982168 里我们已在 Configure 步骤把 `CONFIG_PACKAGE_luci-i18n-netmonitor-zh-cn=y`
+   写进 `.config`，CI run 34933542682 的日志实锤：`No change to .config` 之后仍报
+   `No rule to make target 'package/luci-i18n-netmonitor-zh-cn/compile'`。即**无论选中与否，该目标都不存在**。
 
-**修法**：在 Configure 步骤启用主包之后，顺手把本包衍生的 i18n 包也写进 `.config`
-（名字同样从 `tmp/.packageinfo` 推导，绝不手算），使 `package/<name>/compile` 目标真正生成，
-循环从“摆设”变为“名副其实”的独立编译步骤：
+**真实根因**：luci.mk 的 `LuciTranslation` 在编译**主包**时，会遍历 `po/` 下每个语言目录、把 i18n
+子包（`luci-i18n-<basename>-<lang>`，本包即 `luci-i18n-netmonitor-zh-cn`）作为主包构建过程的一部分
+**顺带编译并打包**；但它**不会**为这些 i18n 子包注册独立的 `package/luci-i18n-*/compile` 目标。
+因此 `make package/luci-i18n-netmonitor-zh-cn/compile` 在任何情况下都“无此目标”，与 `.config` 无关。
+i18n 包之所以进产物，是主包编译的**确定性产物**（非脆弱副作用）——CI 实证：ipk 日志
+`Packaged contents of .../luci-i18n-netmonitor-zh-cn into .../luci-i18n-netmonitor-zh-cn_26.258.19988~8982168_all.ipk`；
+apk 日志末行 `luci-i18n-netmonitor-zh-cn-26.258.19988~8982168.apk`。
+
+**修法**：删除 i18n 编译循环（`make package/<i18n>/compile`），改为**存在性校验**——确认
+`tmp/.packageinfo` 中扫描到的每个 i18n 包，都在 `bin/` 下产出了对应 `.ipk`/`.apk`
+（apk 文件名用短横、ipk 用下划线分隔版本号，故两种命名一并匹配）。一旦 luci.mk 不再顺带构建 i18n，
+此步立即以 `::error` 暴露，而非静默丢包：
 
 ```sh
-# 紧随 echo 'CONFIG_PACKAGE_luci-app-netmonitor=y' >> .config 之后
 for i18n in $(grep -oE '^Package: luci-i18n-netmonitor-[A-Za-z0-9._-]+$' tmp/.packageinfo | sed 's/^Package: //'); do
   [ -z "$i18n" ] && continue
-  sed -i "/^CONFIG_PACKAGE_$i18n=/d" .config
-  echo "CONFIG_PACKAGE_$i18n=y" >> .config
+  found=$(find bin -type f \( -name "${i18n}*.ipk" -o -name "${i18n}*.apk" \) 2>/dev/null | head -1)
+  if [ -z "$found" ]; then
+    echo "::error::translation package $i18n was scanned but no built artifact found under bin/"
+    exit 1
+  fi
+  echo "==> i18n artifact present: $found"
 done
 ```
 
-**判据**：下一轮 CI 中，i18n 循环应打印 `==> building luci-i18n-netmonitor-zh-cn` 且不再出现
-`No rule to make target` 与 `::warning::skip`；末尾 `Collect artifacts` 步骤的 `ls -la` 里
-`luci-i18n-netmonitor-zh-cn_*.{ipk,apk}` 应存在。
+（Configure 步骤也不再写 i18n 的 `CONFIG_PACKAGE_*`——写了也没用，反而暗示“选中才编译”的错误心智模型。）
+
+**判据**：CI 中 Build 步骤应打印
+`==> i18n artifact present: .../luci-i18n-netmonitor-zh-cn[_-]*.{ipk,apk}`，
+且全程不再出现 `No rule to make target 'package/luci-i18n` 与 `##[warning]skip`。
 
 ---
 

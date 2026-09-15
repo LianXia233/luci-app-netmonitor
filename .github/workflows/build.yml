@@ -130,20 +130,14 @@ jobs:
           sed -i '/^CONFIG_PACKAGE_luci-app-netmonitor=/d' .config 2>/dev/null || true
           echo 'CONFIG_PACKAGE_luci-app-netmonitor=y' >> .config
 
-          # 一并选中本包衍生的 i18n 包。OpenWrt 的 package/<name>/compile 目标
-          # 由 subdir.mk 在该包被 .config 选中（CONFIG_PACKAGE_*=y）时才生成；
-          # 仅 .packageinfo 里有该包还不够——之前 i18n 循环报
-          # "No rule to make target 'package/luci-i18n-netmonitor-zh-cn/compile'"
-          # 正是因为它没被选中，目标不存在，被 || 吞成误导性 "skip" 警告。
-          # i18n 包名完全由 luci.mk 推导（luci-i18n-<basename>-<lang>，本包即
-          # luci-i18n-netmonitor-zh-cn），这里直接从本次扫描生成的 tmp/.packageinfo
-          # 取出真实包名，绝不手算。
-          for i18n in $(grep -oE '^Package: luci-i18n-netmonitor-[A-Za-z0-9._-]+$' tmp/.packageinfo 2>/dev/null | sed 's/^Package: //'); do
-            [ -z "$i18n" ] && continue
-            sed -i "/^CONFIG_PACKAGE_$i18n=/d" .config 2>/dev/null || true
-            echo "CONFIG_PACKAGE_$i18n=y" >> .config
-            echo "==> enabled translation package: $i18n"
-          done
+          # 不要单独启用/编译 i18n 子包：luci.mk 的 LuciTranslation 在编译主包时
+          # 会顺带构建本包衍生的所有 i18n 包（luci-i18n-<basename>-<lang>，本包即
+          # luci-i18n-netmonitor-zh-cn），但它**不会**为这些 i18n 子包注册独立的
+          # package/luci-i18n-*/compile 目标。即便在 .config 写
+          # CONFIG_PACKAGE_luci-i18n-netmonitor-zh-cn=y，`make package/<i18n>/compile`
+          # 仍报 "No rule to make target"（8982168 之后的 CI 实证：i18n 的 .ipk/.apk
+          # 由主包编译产出，单独编译目标永不生成）。因此 i18n 的产出校验放到 Build
+          # 步骤（确认 bin/ 下确有对应 .ipk/.apk），而不是试图单独编译它。
 
           echo "target symbols: $(grep -c '^CONFIG_TARGET_' .config 2>/dev/null || echo 0)"
 
@@ -164,16 +158,21 @@ jobs:
 
           make package/$NM_PKG/compile V=s
 
-          # luci.mk 会依据 po/ 下每个语言目录生成 luci-i18n-<basename>-<lang> 包：
-          # <basename> 是本包名去掉 "luci-<type>-" 前缀（本包即 netmonitor），
-          # <lang> 用的是 LUCI_LC_ALIAS 别名（zh_Hans -> zh-cn）。这些名字完全由
-          # luci.mk 内部推导，绝不要在这里手算——之前手算成 luci-i18n-luci-app-netmonitor-zh_Hans，
-          # 与真实目标名不符，被 || 吞成一条误导性的 "skip" 警告（翻译包实际是主包编译时顺带产出的）。
-          # 正确做法：直接从本次扫描生成的 tmp/.packageinfo 取出本包衍生的 i18n 包名再编译。
+          # i18n 翻译包由主包编译（luci.mk 的 LuciTranslation）顺带产出，luci.mk
+          # 不会为 i18n 子包注册独立的 package/luci-i18n-*/compile 目标——
+          # 直接 make 该目标必然 "No rule to make target"（8982168 之后的 CI 实证），
+          # 故这里不单独编译。改为存在性校验：确认 tmp/.packageinfo 中扫描到的每个
+          # i18n 包，都在 bin/ 下产出了对应 .ipk/.apk（apk 文件名用短横、ipk 用下划线
+          # 分隔版本号，故两种命名一并匹配）。一旦未来 luci.mk 不再顺带构建 i18n，
+          # 此步会立即以 ::error 暴露，而不是静默丢包。i18n 包名从 .packageinfo 推导，绝不手算。
           for i18n in $(grep -oE '^Package: luci-i18n-netmonitor-[A-Za-z0-9._-]+$' tmp/.packageinfo 2>/dev/null | sed 's/^Package: //'); do
             [ -z "$i18n" ] && continue
-            echo "==> building $i18n"
-            make package/$i18n/compile V=s || echo "::warning::skip $i18n"
+            found=$(find bin -type f \( -name "${i18n}*.ipk" -o -name "${i18n}*.apk" \) 2>/dev/null | head -1)
+            if [ -z "$found" ]; then
+              echo "::error::translation package $i18n was scanned but no built artifact found under bin/"
+              exit 1
+            fi
+            echo "==> i18n artifact present: $found"
           done
 
       - name: Collect artifacts
