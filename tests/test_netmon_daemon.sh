@@ -7,6 +7,7 @@
 #   3. 分段直方图：分桶归属与段固化
 #   4. TCP 探测（proto=tcp）：curl 主路径、nc 后备路径、工具缺失降级，
 #      以及 tcp_port 的「显式优先 / 缺省继承全局」判定
+#   5. 临时目录按实例隔离（reload 竞态）与 config_load 变量缓存清理
 #
 # 运行环境：Windows / Git Bash 开发机 与 OpenWrt 设备（busybox ash）均可。
 # 用法：sh tests/test_netmon_daemon.sh
@@ -466,6 +467,42 @@ assert_contains     "源码中 TMP_DIR 按 pid 隔离" 'TMP_DIR=$RUN_DIR/tmp.$$'
 assert_not_contains "源码中不再清空公用 tmp/*"   'rm -f "$TMP_DIR"/*' "$_src"
 
 RUN_DIR="$RUN_DIR_SAVE"
+
+echo "== 7. reload 不残留已删除选项的旧值（config_load 变量缓存清理）=="
+
+# 背景：config_load 只为「配置里存在的选项」导出 CONFIG_<段>_<选项> 变量，
+# 不会清除被删除选项的旧变量；config_get 先看变量、再退默认值，
+# 于是长驻守护进程 reload 后会继续读到旧值。
+CONFIG_baidu_label='AAA'
+CONFIG_SECTIONS='baidu'
+CONFIG_global_enabled='1'
+NM_UNRELATED='keep'
+
+clear_config_cache
+
+assert_eq "清掉被删除选项的残留变量"   ""     "${CONFIG_baidu_label:-}"
+assert_eq "清掉 CONFIG_SECTIONS 段缓存" ""     "${CONFIG_SECTIONS:-}"
+assert_eq "清掉全局选项残留变量"       ""     "${CONFIG_global_enabled:-}"
+assert_eq "不动非 CONFIG_ 前缀变量"    "keep" "${NM_UNRELATED:-}"
+
+# 顺序护栏：load_config 内必须先清缓存、再 config_load
+_lc=$(sed -n '/^load_config() {/,/^}/p' "$DAEMON")
+_clr=$(printf '%s\n' "$_lc" | grep -n 'clear_config_cache' | head -1 | cut -d: -f1)
+_ld=$(printf '%s\n' "$_lc" | grep -n 'config_load netmonitor' | head -1 | cut -d: -f1)
+if [ -n "$_clr" ] && [ -n "$_ld" ] && [ "$_clr" -lt "$_ld" ]; then
+	PASS=$((PASS + 1))
+	printf '  ok    load_config 中先清缓存再 config_load\n'
+else
+	FAIL=$((FAIL + 1))
+	printf '  FAIL  load_config 中先清缓存再 config_load (clear=%s load=%s)\n' "$_clr" "$_ld"
+fi
+assert_contains "源码中存在 clear_config_cache" 'clear_config_cache' "$(cat "$DAEMON")"
+
+# 反例护栏：警告不能用管道 while 写（子 shell 里 unset 无效）。
+# 先剥掉注释再断言 —— 守护进程的注释里正是用这个反例来解释坑在哪，
+# 若连注释一起匹配，护栏会被自己的文档误伤。
+_src_code=$(sed 's/#.*//' "$DAEMON")
+assert_not_contains "未使用管道 while 清缓存" 'set | while' "$_src_code"
 
 echo
 echo "======================================"

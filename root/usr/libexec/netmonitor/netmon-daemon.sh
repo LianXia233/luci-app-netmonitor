@@ -200,10 +200,28 @@ zeros_hist() {
 }
 
 # ---------------------------------------------------------------- 配置加载
+# config_load 只为「配置里存在的选项」导出 CONFIG_<段>_<选项> 变量，
+# 从不清除被删除选项留下的旧变量（CONFIG_SECTIONS 段缓存同理，只会叠加）。
+# 守护进程是长驻进程、靠 SIGHUP 原地重载（reload 不重启进程），
+# 于是前端把某个字段清空（saveConfig 走 uci unset）后，reload 仍会读到
+# 上一次的值，直到进程重启才恢复 —— 表现为「界面上清空了却不生效」。
+# 因此每次 config_load 之前先把上一轮的 CONFIG_* 全部清掉。
+#
+# 注意必须写成 `for v in $(set | ...)`，循环体才会在**当前** shell 执行；
+# 若写成 `set | while read v; do unset "$v"; done`，while 落在管道子 shell 里，
+# unset 只影响子 shell，对父进程完全无效（代码看着写了，实际不起作用）。
+clear_config_cache() {
+	local v
+	for v in $(set | sed -n 's/^\(CONFIG_[A-Za-z0-9_]*\)=.*/\1/p'); do
+		unset "$v" 2>/dev/null
+	done
+}
+
 load_config() {
 	# 目标清单写入依赖 $RUN_DIR 存在，这里兜底创建（对 tmpfs 而言开销可忽略）
 	mkdir -p "$RUN_DIR"
 
+	clear_config_cache
 	config_load netmonitor
 
 	config_get_bool G_ENABLED global enabled 1

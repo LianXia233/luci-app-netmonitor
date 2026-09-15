@@ -519,8 +519,9 @@ uci show netmonitor
 
 ### 单元测试
 
-守护进程的四块核心逻辑（ping 解析 / 错误分类、targets.tsv 解析、分段直方图、
-TCP 探测与临时目录按实例隔离）有可重复运行的单元测试，覆盖 87 条断言：
+守护进程的五块核心逻辑（ping 解析 / 错误分类、targets.tsv 解析、分段直方图、
+TCP 探测、临时目录按实例隔离与 config_load 变量缓存清理）
+有可重复运行的单元测试，覆盖 94 条断言：
 
 ```sh
 # 开发机（Git Bash / Linux）与设备上均可运行
@@ -962,6 +963,100 @@ return uci.save().then(function () { return uci.apply(); });
 
 **判据**：设置页 26 个控件的 `data-nm-key` 集合与后端 `GLOBAL_OPTS` 的 26 个键
 **完全相等（不多不少）**，且每个控件的当前值等于 `uci get` 的真实值。
+
+---
+
+### 12.16 长驻守护进程 reload 会读到「已删除选项」的旧值：必须清掉 config_load 的变量缓存
+
+**现象**：在界面上把某个字段清空（例如目标的「自定义标签」或「TCP 端口」）并保存，
+`uci get` 已确认该选项不存在，但守护进程仍按旧值工作 ——
+`/tmp/netmonitor/targets.tsv` 里对应列还是旧值。**重启服务后立刻恢复正常。**
+
+**定位过程**（把变量范围压到最小）：
+
+| 操作 | `targets.tsv` 的 label 列 |
+| --- | --- |
+| 设 `label=AAA` 并 `reload` | `AAA` |
+| `uci delete label` + `commit` + `reload` | **仍是 `AAA`** |
+| 再 `reload` 一次（不重启进程） | **仍是 `AAA`** |
+| `restart` 守护进程 | `-`（正常） |
+
+「只有重启才恢复」这一条把问题锁定在 **reload 不重启进程** 这条路径上。
+
+**根因**：`config_load` 的实现是「把配置里**存在**的选项导出成
+`CONFIG_<段>_<选项>` 变量」，它**不会**清除上一轮留下的、现在已被删除的选项变量
+（`CONFIG_SECTIONS` 段缓存同理，只会不断叠加）。而 `config_get` 的取值顺序是
+「变量存在就用变量，不存在才退默认值」，于是被删除的选项仍能读到旧值。
+
+这一坑在传统 OpenWrt 服务脚本里不会出现 —— 它们每次都是新进程、重新 `config_load`。
+只有**长驻进程 + 原地重载**才会踩到，而本插件为了避开 restart 竞态，
+reload 正是走 SIGHUP 原地重载（见 12.13）。
+
+**修法**：每次 `config_load` 之前先清掉全部 `CONFIG_*` 变量。
+
+```sh
+clear_config_cache() {
+	local v
+	for v in $(set | sed -n 's/^\(CONFIG_[A-Za-z0-9_]*\)=.*/\1/p'); do
+		unset "$v" 2>/dev/null
+	done
+}
+
+load_config() {
+	mkdir -p "$RUN_DIR"
+	clear_config_cache          # 必须在 config_load 之前
+	config_load netmonitor
+	...
+}
+```
+
+**一个容易写错的细节**：清缓存必须写成 `for v in $(set | ...)`，
+让循环体在**当前** shell 执行。若写成
+`set | while read v; do unset "$v"; done`，`while` 会落在管道子 shell 中，
+`unset` 只作用于那个子 shell，对父进程**完全无效** —— 代码看起来「写了」，实际毫无作用。
+测试里专门留了一条 `assert_not_contains 'set | while'` 防止后人改回这种写法。
+
+**判据**：删除某选项并 `reload`（不重启）后，`targets.tsv` 对应列应立即变为占位符 `-`。
+回归护栏见 `tests/test_netmon_daemon.sh` 第 7 节。
+
+---
+
+### 12.17 不要抢 procd 的 pidfile，reload 时也不要盲信 pid
+
+**现象**：每次 `stop` / `restart` 都留下一条错误级日志：
+```
+daemon.err procd: Failed to remove pidfile: /var/run/netmonitor.pid: No such file or directory
+```
+看起来像停止失败，实际服务状态完全正常。这类**假报错**最耽误排障 —— 真出问题时
+会被淹没，或者反过来让人去查一个根本不存在的故障。
+
+**根因**：pidfile 由 `procd_set_param pidfile` 交给 procd 创建，**也由 procd 负责清理**。
+`stop_service()` 里那句 `rm -f "$PIDFILE"` 抢在 procd 前面把它删了，
+procd 随后再来删就撞上 ENOENT，于是记成错误。
+
+**修法**：`stop_service()` 不再碰 pidfile。这一点要写在注释里，
+否则后人会觉得"少了清理步骤"而把它加回去。
+
+**顺带加固 `reload_service()`**：原实现只判断「`/proc/$pid` 是否存在」。
+但 pidfile 若因异常掉电残留，那个 pid 可能早已被内核回收给**别的进程** ——
+而 **SIGHUP 对多数进程是致命信号**，误发等于随手杀掉别人的进程。
+现在先核对 `/proc/$pid/cmdline` 确实是本守护进程，才投递 HUP：
+
+```sh
+	cmd=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)
+	case "$cmd" in
+		*netmon-daemon.sh*) kill -HUP "$pid" 2>/dev/null ;;   # 确认是本守护进程
+		*)                   restart ;;
+	esac
+```
+
+**判据**：
+
+- `restart` 后 `logread` 不再出现 `Failed to remove pidfile`；
+- 正常 `reload` 仍打印 `configuration reload requested` + `configuration reloaded`
+  （证明 cmdline 校验没有误伤正常路径）；
+- 把 pidfile 故意改写成 `1` 再 `reload`，应看到 pid **发生变化**（走了 restart），
+  而不是向 pid 1 发信号。三条都在实机上实测通过。
 
 ---
 

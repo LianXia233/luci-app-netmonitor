@@ -49,22 +49,35 @@ start_service() {
 }
 
 stop_service() {
-	# procd 会负责杀掉实例，这里仅清理运行期残留
-	rm -f "$PIDFILE"
-	# 临时目录交由守护进程按 pid 自行回收（见 start_service 里的说明）
+	# 不要在这里删 $PIDFILE：它由 procd 通过 procd_set_param pidfile 创建，
+	# 也由 procd 在停实例时负责清理。抢在它前面删掉，procd 随后会打出一条
+	#   daemon.err procd: Failed to remove pidfile: ...: No such file or directory
+	# 看起来像停止失败，实际无害 —— 这类假报错会干扰排障，索性不碰。
+	# 临时目录交由守护进程按 pid 自行回收（见 start_service 里的说明）。
 	logger -t netmonitor "service stopped"
 }
 
 reload_service() {
-	local pid
+	local pid cmd
 	pid=$(cat "$PIDFILE" 2>/dev/null)
-
-	if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
-		kill -HUP "$pid" 2>/dev/null
-		logger -t netmonitor "configuration reload requested"
+	if [ -n "$pid" ]; then
+		cmd=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)
 	else
-		restart
+		cmd=''
 	fi
+
+	# 只看「/proc/$pid 存在」是不够的：若 pidfile 因异常掉电残留，该 pid 可能
+	# 已被内核回收给无关进程，而 SIGHUP 对多数进程是致命信号。所以确认命令行
+	# 确实是本守护进程，才发 HUP；否则退回 restart（进程不存在时 restart 更快）。
+	case "$cmd" in
+		*netmon-daemon.sh*)
+			kill -HUP "$pid" 2>/dev/null
+			logger -t netmonitor "configuration reload requested"
+			;;
+		*)
+			restart
+			;;
+	esac
 }
 
 service_triggers() {
