@@ -129,6 +129,22 @@ jobs:
           # 显式启用本包（conf 成功写出时该行已存在，此处仅作保证）
           sed -i '/^CONFIG_PACKAGE_luci-app-netmonitor=/d' .config 2>/dev/null || true
           echo 'CONFIG_PACKAGE_luci-app-netmonitor=y' >> .config
+
+          # 一并选中本包衍生的 i18n 包。OpenWrt 的 package/<name>/compile 目标
+          # 由 subdir.mk 在该包被 .config 选中（CONFIG_PACKAGE_*=y）时才生成；
+          # 仅 .packageinfo 里有该包还不够——之前 i18n 循环报
+          # "No rule to make target 'package/luci-i18n-netmonitor-zh-cn/compile'"
+          # 正是因为它没被选中，目标不存在，被 || 吞成误导性 "skip" 警告。
+          # i18n 包名完全由 luci.mk 推导（luci-i18n-<basename>-<lang>，本包即
+          # luci-i18n-netmonitor-zh-cn），这里直接从本次扫描生成的 tmp/.packageinfo
+          # 取出真实包名，绝不手算。
+          for i18n in $(grep -oE '^Package: luci-i18n-netmonitor-[A-Za-z0-9._-]+$' tmp/.packageinfo 2>/dev/null | sed 's/^Package: //'); do
+            [ -z "$i18n" ] && continue
+            sed -i "/^CONFIG_PACKAGE_$i18n=/d" .config 2>/dev/null || true
+            echo "CONFIG_PACKAGE_$i18n=y" >> .config
+            echo "==> enabled translation package: $i18n"
+          done
+
           echo "target symbols: $(grep -c '^CONFIG_TARGET_' .config 2>/dev/null || echo 0)"
 
       - name: Build package and translations
