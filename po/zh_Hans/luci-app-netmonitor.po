@@ -4,7 +4,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: luci-app-netmonitor 1.0.0\n"
+"Project-Id-Version: luci-app-netmonitor 1.1.0\n"
 "Language: zh_Hans\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -309,65 +309,35 @@ msgstr "总数"
 msgid "No targets"
 msgstr "暂无目标"
 
-msgid "Checking..."
-msgstr "正在检查…"
-
-msgid "Clear all collected samples and persistent history"
-msgstr "清空所有已采集样本与持久化历史"
-
-msgid "Clear history"
-msgstr "清空历史"
-
-msgid "Clear all collected history data?"
-msgstr "确定清空所有历史数据？"
-
-msgid "History cleared"
-msgstr "历史数据已清空"
-
-msgid "Check interval"
-msgstr "检测间隔"
-
-msgid "Packets per probe"
-msgstr "每次检测发包数"
-
-msgid "Probe timeout"
-msgstr "探测超时"
-
-msgid "Concurrent probes"
-msgstr "并发检测数量"
-
-msgid "Enabled"
-msgstr "启用"
-
-msgid "Master switch"
-msgstr "总开关"
-
-msgid "Enable notification"
-msgstr "启用通知"
-
-msgid "Reserved"
-msgstr "预留"
-
-msgid "Thresholds"
-msgstr "阈值"
-
-msgid "UI refresh interval"
-msgstr "界面刷新间隔"
-
-msgid "Independent from the probe interval"
-msgstr "与探测间隔相互独立"
-
-msgid "Global settings"
-msgstr "全局设置"
-
 msgid "Detection"
 msgstr "检测设置"
+
+msgid "How the background daemon probes every target."
+msgstr "后台守护进程对每个目标使用的探测方式。"
 
 msgid "Enable monitoring"
 msgstr "启用监控"
 
 msgid "Master switch. When disabled the background daemon stops probing."
 msgstr "总开关。关闭后后台服务停止探测。"
+
+msgid "Default probe method"
+msgstr "默认探测方式"
+
+msgid "ICMP echo (ping) by default. TCP connect measures the TCP handshake time to a port and still works on networks that drop ICMP. A target can override this."
+msgstr "默认使用 ICMP echo（ping）。TCP 连接方式测量到指定端口的 TCP 握手耗时，在被丢弃 ICMP 的网络里依然可用。单个目标可单独覆盖此项。"
+
+msgid "ICMP (ping)"
+msgstr "ICMP（ping）"
+
+msgid "TCP connect"
+msgstr "TCP 连接"
+
+msgid "Default TCP port"
+msgstr "默认 TCP 端口"
+
+msgid "Used by TCP targets that do not specify a port of their own. Allowed range 1-65535."
+msgstr "供未单独指定端口的目标使用，允许范围 1-65535。"
 
 msgid "Check interval (seconds)"
 msgstr "检测间隔（秒）"
@@ -381,11 +351,20 @@ msgstr "Ping 超时（秒）"
 msgid "Per-packet wait time before a probe is considered lost."
 msgstr "单个探测包的等待时间，超时即判定为丢包。"
 
-msgid "Higher values give better loss statistics but cost more time."
-msgstr "数值越大丢包统计越准，但耗时更长。"
+msgid "Packets per probe"
+msgstr "每次检测发包数"
+
+msgid "ICMP only. Higher values give better loss statistics but cost more time. TCP always performs a single connect."
+msgstr "仅对 ICMP 有效。数值越大丢包统计越准，但耗时更长；TCP 方式固定只建立一次连接。"
+
+msgid "Concurrent probes"
+msgstr "并发检测数量"
 
 msgid "Maximum number of targets probed in parallel."
 msgstr "同时进行探测的目标数量上限。"
+
+msgid "Which protocol family the probes use. A target can override this."
+msgstr "探测使用的协议族，单个目标可单独覆盖。"
 
 msgid "Auto"
 msgstr "自动"
@@ -402,9 +381,6 @@ msgstr "出口接口（可选）"
 msgid "Example: wan, wwan. Leave empty to use the system default route."
 msgstr "例如 wan、wwan。留空则使用系统默认路由。"
 
-msgid "auto"
-msgstr "自动"
-
 msgid "Source address (optional)"
 msgstr "源地址（可选）"
 
@@ -414,11 +390,17 @@ msgstr "将探测绑定到指定的源 IP 地址。"
 msgid "Data retention"
 msgstr "数据保留"
 
+msgid "Where samples are kept and how long they survive."
+msgstr "采样数据的存放位置与保留时长。"
+
 msgid "Write aggregated samples to flash periodically. Disabled by default to protect flash lifetime."
 msgstr "定期将聚合数据写入 Flash。默认关闭以保护 Flash 寿命。"
 
 msgid "History retention"
 msgstr "历史保留时间"
+
+msgid "How long aggregated samples are kept on flash when persistence is enabled."
+msgstr "开启持久化后，聚合数据在 Flash 上的保留时长。"
 
 msgid "1 hour"
 msgstr "最近 1 小时"
@@ -450,35 +432,68 @@ msgstr "聚合数据写入 Flash 的频率，数值越大写入次数越少。"
 msgid "In-memory samples per target"
 msgstr "每目标内存采样点数"
 
-msgid "Ring buffer size in /tmp. 4320 samples at 10s interval covers about 12 hours."
-msgstr "/tmp 中环形缓存的大小。10 秒间隔下 4320 点约覆盖 12 小时。"
+msgid "Ring buffer size in tmpfs. 4320 samples at a 10s interval covers about 12 hours."
+msgstr "tmpfs 中环形缓存的大小。10 秒间隔下 4320 点约覆盖 12 小时。"
+
+msgid "Thresholds"
+msgstr "阈值"
+
+msgid "Values used to turn raw measurements into a quality grade."
+msgstr "把原始测量值换算为质量等级所用的阈值。"
 
 msgid "Excellent below (ms)"
 msgstr "优秀（低于，毫秒）"
 
+msgid "Latency below this value is graded Excellent."
+msgstr "延迟低于该值判为「优秀」。"
+
 msgid "Good below (ms)"
 msgstr "良好（低于，毫秒）"
+
+msgid "Latency below this value is graded Good."
+msgstr "延迟低于该值判为「良好」。"
 
 msgid "Fair below (ms)"
 msgstr "一般（低于，毫秒）"
 
+msgid "Latency below this value is graded Fair."
+msgstr "延迟低于该值判为「一般」。"
+
 msgid "Poor below (ms)"
 msgstr "较差（低于，毫秒）"
+
+msgid "Latency at or above this value is graded Severe."
+msgstr "延迟达到或超过该值判为「严重」。"
 
 msgid "Loss warning (%)"
 msgstr "丢包告警阈值（%）"
 
+msgid "Packet loss at or above this percentage is considered a warning."
+msgstr "丢包率达到或超过该百分比时视为告警。"
+
 msgid "Loss critical (%)"
 msgstr "丢包严重阈值（%）"
+
+msgid "Packet loss at or above this percentage is considered critical."
+msgstr "丢包率达到或超过该百分比时视为严重。"
 
 msgid "Consecutive failures to warn"
 msgstr "连续失败告警阈值"
 
+msgid "After this many consecutive failures the target is graded Severe."
+msgstr "连续失败达到该次数后，目标判为「严重」。"
+
 msgid "Consecutive failures to critical"
 msgstr "连续失败严重阈值"
 
+msgid "After this many consecutive failures the target is graded Offline."
+msgstr "连续失败达到该次数后，目标判为「离线」。"
+
 msgid "Interface & logging"
 msgstr "界面与日志"
+
+msgid "Front-end refresh rate and log verbosity."
+msgstr "前端刷新频率与日志详细程度。"
 
 msgid "UI refresh interval (seconds)"
 msgstr "界面刷新间隔（秒）"
@@ -507,14 +522,89 @@ msgstr "错误"
 msgid "Notification (reserved)"
 msgstr "通知（预留）"
 
-msgid "Interface is reserved for future webhook / Telegram / WeCom / DingTalk / mail support."
-msgstr "接口预留，后续可扩展 Webhook、Telegram、企业微信、钉钉、邮件等方式。"
+msgid "The notification backend is not implemented yet."
+msgstr "通知后端尚未实现。"
+
+msgid "Enable notification"
+msgstr "启用通知"
+
+msgid "Reserved for future webhook / Telegram / WeCom / DingTalk / mail support. Has no effect yet."
+msgstr "接口预留，后续可扩展 Webhook、Telegram、企业微信、钉钉、邮件等方式；目前不生效。"
 
 msgid "Notification endpoint"
 msgstr "通知地址"
 
 msgid "Reserved. Leave empty until a notification backend is available."
 msgstr "预留项，在通知后端可用之前请留空。"
+
+msgid "Clear all collected samples and persistent history"
+msgstr "清空所有已采集样本与持久化历史"
+
+msgid "Clear history"
+msgstr "清空历史"
+
+msgid "Clear all collected history data?"
+msgstr "确定清空所有历史数据？"
+
+msgid "History cleared"
+msgstr "历史数据已清空"
+
+msgid "Handshake timing to port"
+msgstr "到端口的握手耗时"
+
+msgid "Echo request / reply"
+msgstr "回显请求 / 应答"
+
+msgid "Check interval"
+msgstr "检测间隔"
+
+msgid "Probe timeout"
+msgstr "探测超时"
+
+msgid "Enabled"
+msgstr "启用"
+
+msgid "Master switch"
+msgstr "总开关"
+
+msgid "Reserved"
+msgstr "预留"
+
+msgid "UI refresh interval"
+msgstr "界面刷新间隔"
+
+msgid "Independent from the probe interval"
+msgstr "与探测间隔相互独立"
+
+msgid "(current)"
+msgstr "（当前值）"
+
+msgid "Please enter a whole number"
+msgstr "请填写整数"
+
+msgid "Allowed range"
+msgstr "允许范围"
+
+msgid "Unsaved changes"
+msgstr "有未保存的修改"
+
+msgid "All changes applied"
+msgstr "所有修改已应用"
+
+msgid "Save & Apply"
+msgstr "保存并应用"
+
+msgid "Discard changes"
+msgstr "放弃修改"
+
+msgid "No changes to save"
+msgstr "没有需要保存的改动"
+
+msgid "Saved"
+msgstr "已保存"
+
+msgid "Changes discarded"
+msgstr "已放弃修改"
 
 msgid "Add target"
 msgstr "新增目标"
@@ -530,6 +620,9 @@ msgstr "刷新"
 
 msgid "Global interval"
 msgstr "全局间隔"
+
+msgid "Probe method"
+msgstr "探测方式"
 
 msgid "Label"
 msgstr "标签"
@@ -548,6 +641,9 @@ msgstr "间隔与超时填 0 表示继承全局设置。"
 
 msgid "The table scrolls horizontally on small screens."
 msgstr "小屏幕下表格可横向滚动。"
+
+msgid "global default port"
+msgstr "跟随全局默认端口"
 
 msgid "IPv4"
 msgstr "IPv4"
@@ -576,6 +672,12 @@ msgstr "确定删除该目标？"
 msgid "Edit target"
 msgstr "编辑目标"
 
+msgid "Not used by ICMP"
+msgstr "ICMP 不使用端口"
+
+msgid "TCP port (0 = global default)"
+msgstr "TCP 端口（0 = 跟随全局默认）"
+
 msgid "Custom label"
 msgstr "自定义标签"
 
@@ -600,8 +702,8 @@ msgstr "保存"
 msgid "Name and address are required"
 msgstr "名称与地址为必填项"
 
-msgid "Saved"
-msgstr "已保存"
+msgid "TCP targets need a port or a global default port"
+msgstr "TCP 目标需要填写端口，或先设置一个全局默认端口"
 
 msgid "Network Monitor"
 msgstr "网络质量监控"

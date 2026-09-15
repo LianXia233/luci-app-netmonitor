@@ -21,7 +21,7 @@ include $(TOPDIR)/rules.mk
 # Depends/Submenu 各异），上百个包共用同一个 Kconfig symbol PACKAGE_luci-app-netmonitor，
 # 最终 .packagedeps/.config 错乱，package/<name>/compile 目标消失。
 # 本仓库曾因此踩坑：CI 工作流定义过 env PKG_NAME=luci-app-netmonitor，已改名。
-PKG_VERSION:=1.0.0
+PKG_VERSION:=1.1.0
 PKG_RELEASE:=1
 PKG_LICENSE:=GPL-2.0-or-later
 PKG_LICENSE_FILES:=LICENSE
@@ -72,6 +72,24 @@ $(error Cannot locate luci.mk - please build this package inside an OpenWrt sour
 endif
 
 include $(NETMONITOR_LUCI_MK)
+
+# 升级后必须真正重启守护进程。
+#
+# procd 的 file trigger 只监听 /etc/config/netmonitor，因此 `/etc/init.d/netmonitor
+# reload` 只是给「正在跑的进程」发 SIGHUP，进程仍然执行内存里的旧脚本。包升级
+# 只会替换 /usr/libexec/netmonitor/netmon-daemon.sh 这个文件，如果不重新 exec，
+# 新代码要等到重启设备才生效——实测踩过：升级后守护进程 pid 不变，日志里
+# 仍是旧版本的行为，于是「升级成功但功能没变」。
+#
+# 用 LUCI_NAME 而不是字面量包名：本仓库刻意不设置 PKG_NAME，包名由 luci.mk
+# 从目录名推导，写死会与推导结果悄悄脱钩。
+define Package/$(LUCI_NAME)/postinst
+#!/bin/sh
+[ -n "$${IPKG_INSTROOT}" ] || {
+	/etc/init.d/netmonitor restart >/dev/null 2>&1 || true
+}
+exit 0
+endef
 
 # 必须保留本文件末尾的“构建系统签名”注释（含字面量 call BuildPackage）。
 # OpenWrt 的包元数据扫描（include/scan.mk 第 77 行）在生成待扫描文件清单时，会 grep 每个

@@ -847,3 +847,101 @@
 	min-height: 16px;
 	margin-top: 6px;
 }
+
+/* ---------------------------------------------------------------- 设置页 */
+
+/* 单行设置：左侧「标题 + 说明」，右侧控件。
+ * 说明文字始终可见，不随取值隐藏，避免出现「选项不见了」的困惑。 */
+.nm-setting {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 10px 0;
+	border-top: 1px solid var(--nm-border);
+}
+
+.nm-setting:first-of-type { border-top: none; }
+
+.nm-setting-main {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.nm-setting-title { font-size: 13.5px; }
+
+.nm-setting-desc {
+	font-size: 11.5px;
+	line-height: 1.45;
+	color: var(--nm-muted);
+	margin-top: 2px;
+}
+
+.nm-setting-ctl {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	min-width: 150px;
+}
+
+.nm-setting-ctl .nm-num-input {
+	width: 132px;
+	min-width: 110px;
+}
+
+.nm-group-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.nm-group-icon {
+	flex: 0 0 auto;
+	line-height: 0;
+}
+
+.nm-group-sep {
+	height: 1px;
+	background: var(--nm-border);
+	margin-top: 10px;
+}
+
+.nm-dirty { color: var(--nm-warn); }
+
+/* 探测方式标签：ICMP 用主色、TCP 用绿色，与表格里的其它数值可区分 */
+.nm-proto-badge {
+	display: inline-block;
+	padding: 1px 7px;
+	border: 1px solid var(--nm-border);
+	border-radius: 999px;
+	font-size: 11.5px;
+	font-variant-numeric: tabular-nums;
+	color: var(--nm-muted);
+}
+
+.nm-proto-icmp {
+	color: var(--nm-accent);
+	border-color: color-mix(in srgb, var(--nm-accent) 40%, transparent);
+}
+
+.nm-proto-tcp {
+	color: var(--nm-good);
+	border-color: color-mix(in srgb, var(--nm-good) 45%, transparent);
+}
+
+@media (max-width: 560px) {
+	.nm-setting {
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.nm-setting-ctl {
+		justify-content: flex-start;
+		min-width: 0;
+		width: 100%;
+	}
+
+	.nm-setting-ctl .nm-input,
+	.nm-setting-ctl .nm-select { width: 100%; }
+}

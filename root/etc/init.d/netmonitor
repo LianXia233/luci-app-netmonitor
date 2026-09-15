@@ -31,8 +31,10 @@ start_service() {
 		return 1
 	fi
 
-	mkdir -p /tmp/netmonitor/ring /tmp/netmonitor/hist /tmp/netmonitor/state /tmp/netmonitor/tmp
-	rm -f /tmp/netmonitor/tmp/* 2>/dev/null
+	mkdir -p /tmp/netmonitor/ring /tmp/netmonitor/hist /tmp/netmonitor/state
+	# 不要在这里清理临时目录：守护进程按 pid 独占 tmp.<pid>，而 restart 时
+	# 旧实例可能仍在收尾（procd term_timeout 5s），清掉会让它写出空结果。
+	# 遗留目录由守护进程启动时按「pid 已不存在」自行回收。
 
 	procd_open_instance netmonitor
 	procd_set_param command /bin/sh "$PROG"
@@ -49,7 +51,7 @@ start_service() {
 stop_service() {
 	# procd 会负责杀掉实例，这里仅清理运行期残留
 	rm -f "$PIDFILE"
-	rm -f /tmp/netmonitor/tmp/* 2>/dev/null
+	# 临时目录交由守护进程按 pid 自行回收（见 start_service 里的说明）
 	logger -t netmonitor "service stopped"
 }
 

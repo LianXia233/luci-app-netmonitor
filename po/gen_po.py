@@ -279,6 +279,59 @@ ZH = {
     'Save': '保存',
     'Name and address are required': '名称与地址为必填项',
     'Saved': '已保存',
+    'No changes to save': '没有需要保存的改动',
+
+    # ---------------------------------------------------------- TCP 探测
+    # 目标级与全局级的探测方式选择（2026-09-15 新增）
+    'Default probe method': '默认探测方式',
+    'Probe method': '探测方式',
+    'ICMP (ping)': 'ICMP（ping）',
+    'TCP connect': 'TCP 连接',
+    'How the background daemon probes every target.': '后台守护进程对每个目标使用的探测方式。',
+    'ICMP echo (ping) by default. TCP connect measures the TCP handshake time to a port and still works on networks that drop ICMP. A target can override this.':
+        '默认使用 ICMP echo（ping）。TCP 连接方式测量到指定端口的 TCP 握手耗时，在被丢弃 ICMP 的网络里依然可用。单个目标可单独覆盖此项。',
+    'Default TCP port': '默认 TCP 端口',
+    'Used by TCP targets that do not specify a port of their own. Allowed range 1-65535.':
+        '供未单独指定端口的目标使用，允许范围 1-65535。',
+    'TCP port (0 = global default)': 'TCP 端口（0 = 跟随全局默认）',
+    'Not used by ICMP': 'ICMP 不使用端口',
+    'global default port': '跟随全局默认端口',
+    'TCP targets need a port or a global default port': 'TCP 目标需要填写端口，或先设置一个全局默认端口',
+    'Handshake timing to port': '到端口的握手耗时',
+    'Echo request / reply': '回显请求 / 应答',
+    'ICMP only. Higher values give better loss statistics but cost more time. TCP always performs a single connect.':
+        '仅对 ICMP 有效。数值越大丢包统计越准，但耗时更长；TCP 方式固定只建立一次连接。',
+    'Which protocol family the probes use. A target can override this.': '探测使用的协议族，单个目标可单独覆盖。',
+
+    # ---------------------------------------------------------- 设置页改写
+    'Where samples are kept and how long they survive.': '采样数据的存放位置与保留时长。',
+    'How long aggregated samples are kept on flash when persistence is enabled.':
+        '开启持久化后，聚合数据在 Flash 上的保留时长。',
+    'Values used to turn raw measurements into a quality grade.': '把原始测量值换算为质量等级所用的阈值。',
+    'Latency below this value is graded Excellent.': '延迟低于该值判为「优秀」。',
+    'Latency below this value is graded Good.': '延迟低于该值判为「良好」。',
+    'Latency below this value is graded Fair.': '延迟低于该值判为「一般」。',
+    'Latency at or above this value is graded Severe.': '延迟达到或超过该值判为「严重」。',
+    'Packet loss at or above this percentage is considered a warning.': '丢包率达到或超过该百分比时视为告警。',
+    'Packet loss at or above this percentage is considered critical.': '丢包率达到或超过该百分比时视为严重。',
+    'After this many consecutive failures the target is graded Severe.':
+        '连续失败达到该次数后，目标判为「严重」。',
+    'After this many consecutive failures the target is graded Offline.':
+        '连续失败达到该次数后，目标判为「离线」。',
+    'Front-end refresh rate and log verbosity.': '前端刷新频率与日志详细程度。',
+    'The notification backend is not implemented yet.': '通知后端尚未实现。',
+    'Reserved for future webhook / Telegram / WeCom / DingTalk / mail support. Has no effect yet.':
+        '接口预留，后续可扩展 Webhook、Telegram、企业微信、钉钉、邮件等方式；目前不生效。',
+    'Ring buffer size in tmpfs. 4320 samples at a 10s interval covers about 12 hours.':
+        'tmpfs 中环形缓存的大小。10 秒间隔下 4320 点约覆盖 12 小时。',
+    'Save & Apply': '保存并应用',
+    'Discard changes': '放弃修改',
+    'Unsaved changes': '有未保存的修改',
+    'All changes applied': '所有修改已应用',
+    'Changes discarded': '已放弃修改',
+    'Please enter a whole number': '请填写整数',
+    'Allowed range': '允许范围',
+    '(current)': '（当前值）',
 }
 
 # 手工补充（来自数组常量 / 动态拼接，正则无法直接提取）
@@ -337,7 +390,7 @@ def write_po(path, strings, translated):
         '#\n'
         'msgid ""\n'
         'msgstr ""\n'
-        '"Project-Id-Version: luci-app-netmonitor 1.0.0\\n"\n'
+        '"Project-Id-Version: luci-app-netmonitor 1.1.0\\n"\n'
         '"Language: %s\\n"\n'
         '"MIME-Version: 1.0\\n"\n'
         '"Content-Type: text/plain; charset=UTF-8\\n"\n'

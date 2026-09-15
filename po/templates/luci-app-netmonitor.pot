@@ -4,7 +4,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: luci-app-netmonitor 1.0.0\n"
+"Project-Id-Version: luci-app-netmonitor 1.1.0\n"
 "Language: en\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -309,64 +309,34 @@ msgstr ""
 msgid "No targets"
 msgstr ""
 
-msgid "Checking..."
-msgstr ""
-
-msgid "Clear all collected samples and persistent history"
-msgstr ""
-
-msgid "Clear history"
-msgstr ""
-
-msgid "Clear all collected history data?"
-msgstr ""
-
-msgid "History cleared"
-msgstr ""
-
-msgid "Check interval"
-msgstr ""
-
-msgid "Packets per probe"
-msgstr ""
-
-msgid "Probe timeout"
-msgstr ""
-
-msgid "Concurrent probes"
-msgstr ""
-
-msgid "Enabled"
-msgstr ""
-
-msgid "Master switch"
-msgstr ""
-
-msgid "Enable notification"
-msgstr ""
-
-msgid "Reserved"
-msgstr ""
-
-msgid "Thresholds"
-msgstr ""
-
-msgid "UI refresh interval"
-msgstr ""
-
-msgid "Independent from the probe interval"
-msgstr ""
-
-msgid "Global settings"
-msgstr ""
-
 msgid "Detection"
+msgstr ""
+
+msgid "How the background daemon probes every target."
 msgstr ""
 
 msgid "Enable monitoring"
 msgstr ""
 
 msgid "Master switch. When disabled the background daemon stops probing."
+msgstr ""
+
+msgid "Default probe method"
+msgstr ""
+
+msgid "ICMP echo (ping) by default. TCP connect measures the TCP handshake time to a port and still works on networks that drop ICMP. A target can override this."
+msgstr ""
+
+msgid "ICMP (ping)"
+msgstr ""
+
+msgid "TCP connect"
+msgstr ""
+
+msgid "Default TCP port"
+msgstr ""
+
+msgid "Used by TCP targets that do not specify a port of their own. Allowed range 1-65535."
 msgstr ""
 
 msgid "Check interval (seconds)"
@@ -381,10 +351,19 @@ msgstr ""
 msgid "Per-packet wait time before a probe is considered lost."
 msgstr ""
 
-msgid "Higher values give better loss statistics but cost more time."
+msgid "Packets per probe"
+msgstr ""
+
+msgid "ICMP only. Higher values give better loss statistics but cost more time. TCP always performs a single connect."
+msgstr ""
+
+msgid "Concurrent probes"
 msgstr ""
 
 msgid "Maximum number of targets probed in parallel."
+msgstr ""
+
+msgid "Which protocol family the probes use. A target can override this."
 msgstr ""
 
 msgid "Auto"
@@ -402,9 +381,6 @@ msgstr ""
 msgid "Example: wan, wwan. Leave empty to use the system default route."
 msgstr ""
 
-msgid "auto"
-msgstr ""
-
 msgid "Source address (optional)"
 msgstr ""
 
@@ -414,10 +390,16 @@ msgstr ""
 msgid "Data retention"
 msgstr ""
 
+msgid "Where samples are kept and how long they survive."
+msgstr ""
+
 msgid "Write aggregated samples to flash periodically. Disabled by default to protect flash lifetime."
 msgstr ""
 
 msgid "History retention"
+msgstr ""
+
+msgid "How long aggregated samples are kept on flash when persistence is enabled."
 msgstr ""
 
 msgid "1 hour"
@@ -450,34 +432,67 @@ msgstr ""
 msgid "In-memory samples per target"
 msgstr ""
 
-msgid "Ring buffer size in /tmp. 4320 samples at 10s interval covers about 12 hours."
+msgid "Ring buffer size in tmpfs. 4320 samples at a 10s interval covers about 12 hours."
+msgstr ""
+
+msgid "Thresholds"
+msgstr ""
+
+msgid "Values used to turn raw measurements into a quality grade."
 msgstr ""
 
 msgid "Excellent below (ms)"
 msgstr ""
 
+msgid "Latency below this value is graded Excellent."
+msgstr ""
+
 msgid "Good below (ms)"
+msgstr ""
+
+msgid "Latency below this value is graded Good."
 msgstr ""
 
 msgid "Fair below (ms)"
 msgstr ""
 
+msgid "Latency below this value is graded Fair."
+msgstr ""
+
 msgid "Poor below (ms)"
+msgstr ""
+
+msgid "Latency at or above this value is graded Severe."
 msgstr ""
 
 msgid "Loss warning (%)"
 msgstr ""
 
+msgid "Packet loss at or above this percentage is considered a warning."
+msgstr ""
+
 msgid "Loss critical (%)"
+msgstr ""
+
+msgid "Packet loss at or above this percentage is considered critical."
 msgstr ""
 
 msgid "Consecutive failures to warn"
 msgstr ""
 
+msgid "After this many consecutive failures the target is graded Severe."
+msgstr ""
+
 msgid "Consecutive failures to critical"
 msgstr ""
 
+msgid "After this many consecutive failures the target is graded Offline."
+msgstr ""
+
 msgid "Interface & logging"
+msgstr ""
+
+msgid "Front-end refresh rate and log verbosity."
 msgstr ""
 
 msgid "UI refresh interval (seconds)"
@@ -507,13 +522,88 @@ msgstr ""
 msgid "Notification (reserved)"
 msgstr ""
 
-msgid "Interface is reserved for future webhook / Telegram / WeCom / DingTalk / mail support."
+msgid "The notification backend is not implemented yet."
+msgstr ""
+
+msgid "Enable notification"
+msgstr ""
+
+msgid "Reserved for future webhook / Telegram / WeCom / DingTalk / mail support. Has no effect yet."
 msgstr ""
 
 msgid "Notification endpoint"
 msgstr ""
 
 msgid "Reserved. Leave empty until a notification backend is available."
+msgstr ""
+
+msgid "Clear all collected samples and persistent history"
+msgstr ""
+
+msgid "Clear history"
+msgstr ""
+
+msgid "Clear all collected history data?"
+msgstr ""
+
+msgid "History cleared"
+msgstr ""
+
+msgid "Handshake timing to port"
+msgstr ""
+
+msgid "Echo request / reply"
+msgstr ""
+
+msgid "Check interval"
+msgstr ""
+
+msgid "Probe timeout"
+msgstr ""
+
+msgid "Enabled"
+msgstr ""
+
+msgid "Master switch"
+msgstr ""
+
+msgid "Reserved"
+msgstr ""
+
+msgid "UI refresh interval"
+msgstr ""
+
+msgid "Independent from the probe interval"
+msgstr ""
+
+msgid "(current)"
+msgstr ""
+
+msgid "Please enter a whole number"
+msgstr ""
+
+msgid "Allowed range"
+msgstr ""
+
+msgid "Unsaved changes"
+msgstr ""
+
+msgid "All changes applied"
+msgstr ""
+
+msgid "Save & Apply"
+msgstr ""
+
+msgid "Discard changes"
+msgstr ""
+
+msgid "No changes to save"
+msgstr ""
+
+msgid "Saved"
+msgstr ""
+
+msgid "Changes discarded"
 msgstr ""
 
 msgid "Add target"
@@ -529,6 +619,9 @@ msgid "Refresh"
 msgstr ""
 
 msgid "Global interval"
+msgstr ""
+
+msgid "Probe method"
 msgstr ""
 
 msgid "Label"
@@ -547,6 +640,9 @@ msgid "Interval and timeout set to 0 inherit the global settings."
 msgstr ""
 
 msgid "The table scrolls horizontally on small screens."
+msgstr ""
+
+msgid "global default port"
 msgstr ""
 
 msgid "IPv4"
@@ -576,6 +672,12 @@ msgstr ""
 msgid "Edit target"
 msgstr ""
 
+msgid "Not used by ICMP"
+msgstr ""
+
+msgid "TCP port (0 = global default)"
+msgstr ""
+
 msgid "Custom label"
 msgstr ""
 
@@ -600,7 +702,7 @@ msgstr ""
 msgid "Name and address are required"
 msgstr ""
 
-msgid "Saved"
+msgid "TCP targets need a port or a global default port"
 msgstr ""
 
 msgid "Network Monitor"

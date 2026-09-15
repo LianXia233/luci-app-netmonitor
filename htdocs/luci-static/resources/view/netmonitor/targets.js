@@ -63,8 +63,12 @@ return view.extend({
 		sumIconBox.innerHTML = icons.multiTarget(targets, 34);
 		summary.appendChild(sumIconBox);
 		summary.appendChild(common.inlineIcon(icons.gear(30)));
+		var sumProto = (cfg.default_proto === 'tcp')
+			? ('TCP:' + (cfg.default_tcp_port || 80)) : 'ICMP';
 		summary.appendChild(common.el('span', 'nm-card-sub',
-			_('Global interval') + ': ' + (cfg.interval || 10) + 's · ' + _('Timeout') + ': ' + (cfg.timeout || 3) + 's'));
+			_('Default probe method') + ': ' + sumProto + ' · ' +
+			_('Global interval') + ': ' + (cfg.interval || 10) + 's · ' +
+			_('Timeout') + ': ' + (cfg.timeout || 3) + 's'));
 		row.appendChild(summary);
 		bar.appendChild(row);
 		page.appendChild(bar);
@@ -75,7 +79,8 @@ return view.extend({
 		var tbody = common.el('tbody', '');
 		var htr = common.el('tr', '');
 		htr.appendChild(common.el('th', '', ''));
-		[_('Name'), _('Address'), _('Region'), _('Label'), _('Family'), _('Interval'), _('Timeout'), _('Interface'), _('Enabled'), _('Actions')]
+		[_('Name'), _('Address'), _('Probe method'), _('Region'), _('Label'), _('Family'),
+		 _('Interval'), _('Timeout'), _('Interface'), _('Enabled'), _('Actions')]
 			.forEach(function(h) { htr.appendChild(common.el('th', '', h)); });
 		thead.appendChild(htr);
 		table.appendChild(thead);
@@ -105,7 +110,7 @@ return view.extend({
 			if (!list.length) {
 				var tr0 = common.el('tr', '');
 				var td0 = common.el('td', 'nm-empty', _('No targets'));
-				td0.colSpan = 11;
+				td0.colSpan = 12;
 				tr0.appendChild(td0);
 				tbody.appendChild(tr0);
 				return;
@@ -114,6 +119,9 @@ return view.extend({
 			for (var i = 0; i < list.length; i++) {
 				(function(t, idx) {
 					var tr = common.el('tr', '');
+					/* UCI 段名挂到行上：实机验证脚本据此定位「哪一行是哪个目标」，
+					 * 不必依赖行序（行序会被新增/删除打乱）。 */
+					tr.setAttribute('data-id', t.id);
 
 					var tdChk = common.el('td', '');
 					var cb = common.el('input', '');
@@ -125,6 +133,26 @@ return view.extend({
 
 					tr.appendChild(common.el('td', '', t.name || t.id));
 					tr.appendChild(common.el('td', 'nm-target-host', t.host || ''));
+
+					/* 探测方式列：显示的端口取自该目标的 tcp_port，
+					 * 未单独指定时回落到全局默认端口（与守护进程的取值规则一致）。 */
+					var tdMethod = common.el('td', '');
+					var badge, badgeTitle;
+					if (t.proto === 'tcp') {
+						var tport = (t.tcp_port || 0) > 0
+							? t.tcp_port : (cfg.default_tcp_port || 80);
+						badge = 'TCP:' + tport;
+						badgeTitle = _('TCP connect') +
+							(((t.tcp_port || 0) > 0) ? '' : ' · ' + _('global default port'));
+					} else {
+						badge = 'ICMP';
+						badgeTitle = _('ICMP (ping)');
+					}
+					var bspan = common.el('span',
+						'nm-proto-badge nm-proto-' + (t.proto === 'tcp' ? 'tcp' : 'icmp'), badge);
+					bspan.title = badgeTitle;
+					tdMethod.appendChild(bspan);
+					tr.appendChild(tdMethod);
 
 					var tdR = common.el('td', '');
 					tdR.appendChild(common.el('span', common.regionTagClass(t.region), common.regionText(t.region)));
@@ -203,6 +231,11 @@ return view.extend({
 
 			function field(label, key, control) {
 				var f = common.el('div', 'nm-field');
+				/* 把 UCI 键名挂到「控件」上（不要挂到 .nm-field 容器：
+				 * 容器在 DOM 里排在前面，会让 [data-nm-key=x] 选中容器，
+				 * 赋值变成给 div 挂临时属性，输入框纹丝不动，
+				 * 实机验证会得到「看起来成功、实际没保存」的假象）。 */
+				control.setAttribute('data-nm-key', key);
 				f.appendChild(common.el('label', '', label));
 				f.appendChild(control);
 				fields[key] = control;
@@ -227,8 +260,31 @@ return view.extend({
 				return s;
 			}
 
+			/* 探测方式：icmp 默认；tcp 需要端口，端口留 0 表示跟随全局默认端口。
+			 * 端口输入框在 icmp 下置灰（而不是隐藏），避免出现「选项不见了」的困惑。 */
+			var protoSel = select([
+				['icmp', _('ICMP (ping)')], ['tcp', _('TCP connect')]
+			], t ? (t.proto || 'icmp') : (cfg.default_proto || 'icmp'));
+
+			var portInp = input('', (t && t.tcp_port) ? t.tcp_port : '');
+			portInp.type = 'number';
+			portInp.min = '0';
+			portInp.max = '65535';
+
+			function syncProto() {
+				var isTcp = (protoSel.value === 'tcp');
+				portInp.disabled = !isTcp;
+				portInp.placeholder = isTcp
+					? String(cfg.default_tcp_port || 80)
+					: _('Not used by ICMP');
+				portInp.style.opacity = isTcp ? '' : '0.5';
+			}
+			protoSel.addEventListener('change', syncProto);
+
 			field(_('Name'), 'name', input('', t ? t.name : ''));
 			field(_('Address'), 'host', input('', t ? t.host : ''));
+			field(_('Probe method'), 'proto', protoSel);
+			field(_('TCP port (0 = global default)'), 'tcp_port', portInp);
 			field(_('Region'), 'region', select([
 				['cn', _('China')], ['overseas', _('Overseas')], ['other', _('Other')]
 			], t ? t.region : 'cn'));
@@ -241,6 +297,7 @@ return view.extend({
 			field(_('Interface (optional)'), 'interface', input('', t ? t.interface : ''));
 			field(_('Source address (optional)'), 'source', input('', t ? t.source : ''));
 			field(_('Remark'), 'remark', input('', t ? t.remark : ''));
+			syncProto();
 
 			var enRow = common.el('div', 'nm-row');
 			var lab = common.el('label', 'nm-switch');
@@ -266,9 +323,18 @@ return view.extend({
 			btnCancel.addEventListener('click', close);
 
 			btnSave.addEventListener('click', function() {
+				var proto = fields.proto.value;
+				var port = parseInt(fields.tcp_port.value, 10);
+				if (isNaN(port) || port < 0) port = 0;
+				if (port > 65535) port = 65535;
+				/* ICMP 目标不保留端口，统一存 0，避免切换协议后残留旧端口 */
+				if (proto !== 'tcp') port = 0;
+
 				var data = {
 					name: fields.name.value.trim(),
 					host: fields.host.value.trim(),
+					proto: proto,
+					tcp_port: port,
 					region: fields.region.value,
 					label: fields.label.value.trim(),
 					family: fields.family.value,
@@ -277,19 +343,34 @@ return view.extend({
 					interface: fields.interface.value.trim(),
 					source: fields.source.value.trim(),
 					remark: fields.remark.value.trim(),
-					enabled: enInp.checked
+					enabled: enInp.checked ? '1' : '0'
 				};
 				if (!data.name || !data.host) {
 					errBox.textContent = _('Name and address are required');
 					return;
 				}
+				if (proto === 'tcp' && port === 0 && !(cfg.default_tcp_port > 0)) {
+					errBox.textContent = _('TCP targets need a port or a global default port');
+					return;
+				}
 				btnSave.disabled = true;
-				var p = t ? common.api.updateTarget(Object.assign({ id: t.id }, data))
-				          : common.api.addTarget(data);
-				p.then(function() {
+
+				/* 保存同样走 OpenWrt 原生 uci 事务（uci.set/add → save → apply），
+				 * 与 LuCI 自带页面一致：提交、失败回滚、procd reload trigger
+				 * 重载后台服务一步到位。 */
+				var p;
+				if (t) {
+					var ops = [];
+					for (var k in data)
+						ops.push({ sid: t.id, opt: k, val: data[k] });
+					p = common.saveConfig(ops);
+				} else {
+					p = common.addSection('netmonitor', 'target', data);
+				}
+				p.then(function(changed) {
 					close();
 					reload();
-					common.notify(_('Saved'));
+					common.notify(changed === 0 ? _('No changes to save') : _('Saved'));
 				}).catch(function(e) {
 					errBox.textContent = String(e.message || e);
 					btnSave.disabled = false;

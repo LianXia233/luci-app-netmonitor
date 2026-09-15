@@ -1,10 +1,12 @@
 #!/bin/sh
 # netmon-daemon.sh 单元测试
 #
-# 覆盖三块核心逻辑：
+# 覆盖四块核心逻辑：
 #   1. ping 输出解析与错误分类（busybox / iputils 两种格式，6 类结果）
 #   2. targets.tsv 字段解析（含 TAB 合并导致字段错位的回归护栏）
 #   3. 分段直方图：分桶归属与段固化
+#   4. TCP 探测（proto=tcp）：curl 主路径、nc 后备路径、工具缺失降级，
+#      以及 tcp_port 的「显式优先 / 缺省继承全局」判定
 #
 # 运行环境：Windows / Git Bash 开发机 与 OpenWrt 设备（busybox ash）均可。
 # 用法：sh tests/test_netmon_daemon.sh
@@ -133,7 +135,8 @@ ping_case() {
 
 	_res="$TMP_DIR/tc.res"
 	: > "$_res"
-	run_check tc "$_host" 3 ipv4 "" ""
+	# run_check <id> <host> <proto> <port> <timeout> <family> <iface> <source>
+	run_check tc "$_host" icmp 0 3 ipv4 "" ""
 	# res 格式: lat \t ok \t eno \t sent \t recv
 	_got_lat=$(cut -f1 < "$_res")
 	_got_ok=$(cut -f2 < "$_res")
@@ -203,7 +206,7 @@ ping_case "iputils 成功"      "www.baidu.com" "$S/ok_iputils"      0 "11.3"  1
 printf '%s\n' "0" > "$STUB_DIR/ping.rc"
 cp "$S/ok_busybox" "$STUB_DIR/ping.out"
 : > "$TMP_DIR/tc.res"
-run_check tc "-evil-host" 3 ipv4 "" ""
+run_check tc "-evil-host" icmp 0 3 ipv4 "" ""
 assert_eq "非法 host: errno" "5" "$(cut -f3 < "$TMP_DIR/tc.res")"
 assert_eq "非法 host: ok"    "0" "$(cut -f2 < "$TMP_DIR/tc.res")"
 
@@ -279,6 +282,190 @@ _cur2=$(cat "$HIST_DIR/$_id.cur")
 assert_eq "失败样本: cnt 增加" "1" "$(printf '%s' "$_cur2" | cut -f3)"
 assert_eq "失败样本: ok 计数不增加" "0" "$(printf '%s' "$_cur2" | cut -f4)"
 assert_eq "失败样本: sent 计入" "1" "$(printf '%s' "$_cur2" | cut -f7)"
+
+
+echo
+echo "== 4. TCP 探测（proto=tcp）=="
+
+# curl 替身：stdout 取 curl.out（模拟 -w '%{time_connect}' 的输出），
+# 返回码取 curl.rc，stderr 取 curl.err，参数记录到 curl.args。
+# 注意：shell 函数的优先级高于外部命令，"$@" 里的 curl 会被解析到这个替身。
+curl() {
+	: > "$STUB_DIR/curl.args"
+	for _a in "$@"; do
+		printf '%s\n' "$_a" >> "$STUB_DIR/curl.args"
+	done
+	[ -f "$STUB_DIR/curl.out" ] && cat "$STUB_DIR/curl.out"
+	[ -f "$STUB_DIR/curl.err" ] && cat "$STUB_DIR/curl.err" >&2
+	return "$(cat "$STUB_DIR/curl.rc" 2>/dev/null || echo 0)"
+}
+
+# tcp_case <描述> <stdout> <rc> <stderr> <期望 lat> <期望 ok> <期望 eno>
+tcp_case() {
+	_name="$1"; _out="$2"; _rc="$3"; _err="$4"
+	_exp_lat="$5"; _exp_ok="$6"; _exp_eno="$7"
+
+	printf '%s' "$_out" > "$STUB_DIR/curl.out"
+	printf '%s\n' "$_rc" > "$STUB_DIR/curl.rc"
+	printf '%s' "$_err" > "$STUB_DIR/curl.err"
+
+	TCP_TOOL=curl
+	# 结果文件名由 id 决定：run_check_tcp tc2 → $TMP_DIR/tc2.res
+	_res="$TMP_DIR/tc2.res"
+	: > "$_res"
+	run_check_tcp tc2 "1.1.1.1" 443 3 ipv4 "" ""
+
+	assert_eq "$_name: lat"   "$_exp_lat" "$(cut -f1 < "$_res")"
+	assert_eq "$_name: ok"    "$_exp_ok"  "$(cut -f2 < "$_res")"
+	assert_eq "$_name: errno" "$_exp_eno" "$(cut -f3 < "$_res")"
+	assert_eq "$_name: sent"  "1"         "$(cut -f4 < "$_res")"
+}
+
+# time_connect 是「秒」，探测结果必须换算成毫秒
+tcp_case "TCP 握手成功"        "0.012345" 0 ""  "12.345" 1 0
+tcp_case "TCP 握手成功(慢)"    "0.500000" 0 ""  "500.000" 1 0
+
+# 连接被拒绝：curl 输出 0.000000，rc=7
+tcp_case "TCP 被拒绝"          "0.000000" 7 "curl: (7) Failed to connect to 1.1.1.1 port 443: Connection refused" "-" 0 3
+# 连接超时：rc=7 但 stderr 明说是 timeout
+tcp_case "TCP 连接超时(rc=7)"  "0.000000" 7 "curl: (7) Failed to connect to 1.1.1.1 port 443: Connection timed out" "-" 0 1
+# 整体超时：rc=28
+tcp_case "TCP 操作超时(rc=28)" "0.000000" 28 "" "-" 0 1
+# DNS 失败：rc=6
+tcp_case "TCP DNS 失败"        "0.000000" 6 "curl: (6) Could not resolve host: x.invalid" "-" 0 2
+# 其它错误：rc=52（连接成功后响应异常，但 time_connect 已为 0 说明没连上）
+tcp_case "TCP 其它错误"        "0.000000" 52 "" "-" 0 4
+
+# 兜底：TCP 工具缺失（既无 curl 也无可用 nc）
+TCP_TOOL=none
+: > "$TMP_DIR/tcpnone.res"
+run_check_tcp tcpnone "1.1.1.1" 443 3 ipv4 "" ""
+assert_eq "TCP 工具缺失: ok"    "0" "$(cut -f2 < "$TMP_DIR/tcpnone.res")"
+assert_eq "TCP 工具缺失: errno" "4" "$(cut -f3 < "$TMP_DIR/tcpnone.res")"
+assert_eq "TCP 工具缺失: lat"   "-" "$(cut -f1 < "$TMP_DIR/tcpnone.res")"
+
+# nc 后备路径
+nc() { return 0; }
+TCP_TOOL=nc
+: > "$TMP_DIR/tcnc.res"
+run_check_tcp tcnc "1.1.1.1" 443 3 ipv4 "" ""
+assert_eq "nc 后备: ok"    "1" "$(cut -f2 < "$TMP_DIR/tcnc.res")"
+assert_eq "nc 后备: errno" "0" "$(cut -f3 < "$TMP_DIR/tcnc.res")"
+
+nc() {
+	printf '%s\n' 'nc: 1.1.1.1 (1.1.1.1:443): Connection refused' >&2
+	return 1
+}
+: > "$TMP_DIR/tcnc2.res"
+run_check_tcp tcnc2 "1.1.1.1" 443 3 ipv4 "" ""
+assert_eq "nc 后备 被拒绝: ok"    "0" "$(cut -f2 < "$TMP_DIR/tcnc2.res")"
+assert_eq "nc 后备 被拒绝: errno" "3" "$(cut -f3 < "$TMP_DIR/tcnc2.res")"
+
+# tcp_errno 归类（直接单测）
+: > "$STUB_DIR/err.empty"
+printf '%s\n' 'curl: (7) Failed to connect: Connection timed out' > "$STUB_DIR/err.timeout"
+printf '%s\n' 'nc: 1.1.1.1 (1.1.1.1:443): Connection refused' > "$STUB_DIR/err.refused"
+printf '%s\n' 'nc: bad address no.such.host.example' > "$STUB_DIR/err.badaddr"
+assert_eq "tcp_errno: curl 6 -> DNS"       "2" "$(tcp_errno curl 6 "$STUB_DIR/err.empty")"
+assert_eq "tcp_errno: curl 28 -> 超时"     "1" "$(tcp_errno curl 28 "$STUB_DIR/err.empty")"
+assert_eq "tcp_errno: curl 7 -> 不可达"    "3" "$(tcp_errno curl 7 "$STUB_DIR/err.empty")"
+assert_eq "tcp_errno: curl 7 超时文案"     "1" "$(tcp_errno curl 7 "$STUB_DIR/err.timeout")"
+assert_eq "tcp_errno: curl 52 -> 其它"     "4" "$(tcp_errno curl 52 "$STUB_DIR/err.empty")"
+assert_eq "tcp_errno: nc 被拒绝 -> 不可达" "3" "$(tcp_errno nc 1 "$STUB_DIR/err.refused")"
+assert_eq "tcp_errno: nc DNS 失败 -> DNS"  "2" "$(tcp_errno nc 1 "$STUB_DIR/err.badaddr")"
+
+# tcp_tool_probe：本环境必定存在 curl（Git Bash / 设备），应选中 curl
+tcp_tool_probe
+assert_eq "tcp_tool_probe 选择 curl" "curl" "$TCP_TOOL"
+
+echo
+echo "== 5. tcp_port 解析（显式优先 / 缺省继承全局）=="
+
+# config_get 替身：用 CFG_<sid>_<key> 变量模拟 UCI 段内容
+config_get() {
+	eval "_v=\${CFG_${2}_${3}-\$4}"
+	eval "$1=\"\$_v\""
+}
+config_get_bool() { config_get "$@"; }
+
+RUN_DIR_SAVE="$RUN_DIR"
+RUN_DIR="$WORK/run_tcp"
+mkdir -p "$RUN_DIR"
+G_DEFAULT_PROTO=icmp
+G_DEFAULT_TCP_PORT=8443
+
+CFG_cfgTCP_name='TCP Target'
+CFG_cfgTCP_host='1.1.1.1'
+CFG_cfgTCP_proto='tcp'
+CFG_cfgTCP_tcp_port='0'
+
+: > "$RUN_DIR/targets.tsv"
+nm_append_target cfgTCP
+_line=$(cat "$RUN_DIR/targets.tsv")
+assert_eq "TSV 列数"                "13"   "$(printf '%s' "$_line" | awk -F'\t' '{print NF}')"
+assert_eq "缺省端口继承全局默认"    "8443" "$(printf '%s' "$_line" | cut -f13)"
+assert_eq "proto 列"                "tcp"  "$(printf '%s' "$_line" | cut -f5)"
+
+# 显式端口优先于全局默认
+CFG_cfgTCP_tcp_port='2222'
+: > "$RUN_DIR/targets.tsv"
+nm_append_target cfgTCP
+assert_eq "显式端口优先" "2222" "$(cut -f13 < "$RUN_DIR/targets.tsv")"
+
+# 目标未设置 proto 时继承全局默认探测方式
+unset CFG_cfgTCP_proto
+G_DEFAULT_PROTO=tcp
+: > "$RUN_DIR/targets.tsv"
+nm_append_target cfgTCP
+assert_eq "proto 缺省继承全局" "tcp" "$(cut -f5 < "$RUN_DIR/targets.tsv")"
+
+# 非法的 proto 值必须被纠正回全局默认，不允许写进 TSV
+CFG_cfgTCP_proto='udp'
+: > "$RUN_DIR/targets.tsv"
+nm_append_target cfgTCP
+assert_eq "非法 proto 被纠正" "tcp" "$(cut -f5 < "$RUN_DIR/targets.tsv")"
+
+RUN_DIR="$RUN_DIR_SAVE"
+
+echo "== 6. 临时目录按实例隔离（reload 竞态回归护栏）=="
+
+# 背景：procd 的 term_timeout 是 5s，而一次 ping 最长要跑 timeout*count+2 秒，
+# 因此 reload→restart 时旧实例往往还在收尾。若新旧实例共用一个 tmp 目录，
+# 新实例启动时的清理会删掉旧实例正在写的 .out，旧实例随即解析失败、写出
+# 全空结果——实机表现为 `awk: ... No such file or directory`、一条
+# `check failed (errno=)` 假告警，以及环缓存里多出一条空采样。
+# 这里把 rm 换成「只记录调用参数」的替身（仍是 no-op，保持测试速度），
+# 断言清理范围只落在「进程已不存在」的目录上。
+
+rm() { printf '%s\n' "$*" >> "$STUB_DIR/rm.calls"; return 0; }
+
+RUN_DIR="$WORK/run"
+mkdir -p "$RUN_DIR"
+TMP_DIR="$RUN_DIR/tmp.88888888"
+mkdir -p "$TMP_DIR" "$RUN_DIR/tmp.$$" "$RUN_DIR/tmp.99999999"
+: > "$RUN_DIR/tmp.99999999/leftover.out"
+: > "$RUN_DIR/tmp.$$/inflight.out"
+: > "$STUB_DIR/rm.calls"
+
+setup_dirs
+_calls=$(cat "$STUB_DIR/rm.calls" 2>/dev/null)
+
+assert_eq "setup_dirs 建立自己的 TMP_DIR" "yes" "$([ -d "$TMP_DIR" ] && echo yes || echo no)"
+assert_not_contains "不清理本实例自己的目录" "tmp.88888888" "$_calls"
+if [ -d "/proc/$$" ]; then
+	assert_not_contains "不清理存活实例的目录" "tmp.$$" "$_calls"
+else
+	SKIP=$((SKIP + 1))
+	printf '  skip  存活实例目录保护（本环境无 /proc/$$）\n'
+fi
+assert_contains "回收死进程遗留的目录" "tmp.99999999" "$_calls"
+
+# 护栏：源码里必须按 pid 隔离，且启动/退出都不再整体清空公用 tmp 目录
+_src=$(cat "$DAEMON")
+assert_contains     "源码中 TMP_DIR 按 pid 隔离" 'TMP_DIR=$RUN_DIR/tmp.$$' "$_src"
+assert_not_contains "源码中不再清空公用 tmp/*"   'rm -f "$TMP_DIR"/*' "$_src"
+
+RUN_DIR="$RUN_DIR_SAVE"
 
 echo
 echo "======================================"

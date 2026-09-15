@@ -24,7 +24,8 @@
 
 - 默认 10 秒一轮探测，支持 1/5/10/15/30/60/120/300 秒及任意 1–3600 秒自定义值
 - 多目标并发探测，并发上限可配（默认 5）
-- 每目标可单独设置：名称、地址、区域、自定义标签、地址族、检测间隔、超时、出口接口、源地址、启用状态、备注
+- 每目标可单独设置：名称、地址、区域、自定义标签、探测方式、TCP 端口、地址族、检测间隔、超时、出口接口、源地址、启用状态、备注
+- 两种探测方式，**逐个目标可选**：ICMP echo（默认）与 TCP 连接握手；TCP 端口可逐目标指定，也可只设一个全局默认端口。被 ICMP 屏蔽或限速的网络里，TCP 方式依然能测出真实握手耗时
 - 区域分类：国内 / 国外 / 其他，外加自由自定义标签（香港、日本、DNS、游戏……），**不内置任何 IP 归属库**
 - 实时统计：当前 / 最低 / 最高 / 平均 / P50 / P95 / P99 延迟、丢包率、成功率、连续成功与连续失败次数、最后检测时间、最近成功时间
 - 质量等级：优秀 / 良好 / 一般 / 较差 / 严重 / 离线，**阈值全部可在页面配置**，不硬编码在前端
@@ -51,7 +52,7 @@ LuCI Web UI (HTML5 + CSS3 + 原生 JS + SVG)
         │
         ▼
 /usr/libexec/netmonitor/netmon-daemon.sh     ← 单实例探测守护进程
-        │  ping / ping6（并发受控）
+        │  ICMP: ping / ping6    TCP: curl 连接握手（并发受控）
         ▼
 /tmp/netmonitor/{ring,hist,state}            ← tmpfs 高频数据（分段 + 直方图）
 /etc/netmonitor/history/*.agg                ← 可选 Flash 持久化（按间隔批量落盘）
@@ -263,6 +264,8 @@ rpcd  rpcd-mod-file  rpcd-mod-luci  rpcd-mod-ucode  cgi-io  ucode
 | `count` | `1` | 每次检测的发包数，1–20 |
 | `concurrency` | `5` | 并发检测目标数上限，1–50 |
 | `address_family` | `auto` | `auto` / `ipv4` / `ipv6` / `both` |
+| `default_proto` | `icmp` | 默认探测方式：`icmp`（ICMP echo）/ `tcp`（TCP 连接握手） |
+| `default_tcp_port` | `80` | TCP 探测的默认端口（1–65535），供未单独指定 `tcp_port` 的目标使用 |
 | `interface` | 空 | 出口接口（如 `wan`、`wwan`），空则走系统默认路由 |
 | `source` | 空 | 源地址 |
 | `persistence` | `0` | 是否开启 Flash 持久化历史 |
@@ -287,7 +290,8 @@ config target 'baidu'
 	option host     'www.baidu.com'
 	option region   'cn'          # cn | overseas | other
 	option label    ''            # 自定义标签，如 香港 / 日本 / DNS / 游戏
-	option proto    'icmp'
+	option proto    'icmp'        # icmp | tcp
+	option tcp_port '0'           # TCP 端口；0 = 跟随全局 default_tcp_port
 	option family   'auto'        # auto | ipv4 | ipv6 | both
 	option interval '0'           # 0 = 跟随全局
 	option timeout  '3'           # 0 = 跟随全局
@@ -300,6 +304,27 @@ config target 'baidu'
 默认配置提供 4 个示例目标（百度、阿里 DNS、Cloudflare、Google DNS），
 其中 2 个默认启用、2 个默认禁用，**可任意修改或删除**。
 
+#### 6.2.1 ICMP 与 TCP 两种探测方式
+
+`proto` 逐个目标可选；目标未写 `proto` 时继承全局 `default_proto`；
+`tcp_port` 为 `0`（或未写）时继承全局 `default_tcp_port`。
+
+| `proto` | 实际动作 | 延迟口径 | 适用场景 |
+| --- | --- | --- | --- |
+| `icmp`（默认） | `ping` / `ping6` 发 ICMP echo | ICMP 往返时间（RTT） | 通用，最贴近传统 ping |
+| `tcp` | 向 `tcp_port` 发起 TCP 三次握手 | 握手耗时（curl `%{time_connect}`） | 被 ICMP 屏蔽 / 限速的网络，只需确认端口可达 |
+
+注意：
+
+- TCP 模式下一次连接计为一个「包」（`sent=1`），因此**丢包率等于失败采样占比**；
+  `count` 不适用（握手只做一次）。
+- `interval` / `timeout` / 并发上限 / 地址族照常生效；`interface` 与 `source`
+  在 curl 路径下通过 `--interface` 绑定。
+- 延迟口径不同，**跨方式的历史曲线不要直接对比**：ICMP 常被中间设备优先处理，
+  TCP 还包含建连排队时间。
+- 失败分类同样明确：curl 退出码 6 → DNS 失败，28 → 超时，7 → 按出错信息区分
+  超时 / 不可达，其余归入「其它错误」；失败时延迟仍为 `null`，绝不写成 `0 ms`。
+
 命令行示例：
 
 ```bash
@@ -307,6 +332,8 @@ uci set netmonitor.myhost=target
 uci set netmonitor.myhost.name='MyHost'
 uci set netmonitor.myhost.host='example.com'
 uci set netmonitor.myhost.region='overseas'
+uci set netmonitor.myhost.proto='tcp'        # 可选：改用 TCP 握手探测
+uci set netmonitor.myhost.tcp_port='443'     # 可选：0 = 跟随全局 default_tcp_port
 uci set netmonitor.myhost.enabled='1'
 uci commit netmonitor
 /etc/init.d/netmonitor reload
@@ -326,8 +353,8 @@ uci commit netmonitor
 | `get_history` | read | 指定范围/目标/区域的历史点（自动降采样） |
 | `get_statistics` | read | 指定范围的聚合统计（平均/最大/最小/P50/P95/丢包/成功率） |
 | `get_config` | read | 全局配置 |
-| `set_config` | write | 修改全局配置（白名单 + 范围校验） |
-| `add_target` / `update_target` / `delete_target` | write | 目标增删改 |
+| `set_config` | write | 修改全局配置（白名单 + 范围校验，含 `default_proto` / `default_tcp_port`） |
+| `add_target` / `update_target` / `delete_target` | write | 目标增删改（含 `proto` / `tcp_port`） |
 | `move_target` / `copy_target` / `batch_targets` | write | 排序 / 复制 / 批量启停 |
 | `clear_history` | write | 清空内存与持久化历史 |
 | `service_status` | read | 服务运行状态与心跳 |
@@ -474,6 +501,16 @@ uci show netmonitor
 桌面 / 手机 / 浅色 / 深色 / 默认 LuCI 主题 均需检查：
 无横向溢出、按钮可点、文字不截断、表格可横向滚动。
 
+以下四项是**端到端硬断言**（v1.1.0 已在实机全量跑通），不只是肉眼检查：
+
+- 设置页每个设置项都带 `data-nm-key`，其键名集合与后端 `GLOBAL_OPTS`
+  **完全一致（不多不少）**，且控件当前值等于 `uci get` 的真实值
+- 不做任何改动直接点「保存并应用」→ 提示 `No changes to save`，
+  **不出现** `ubus code 5` 之类的原始 RPC 报错
+- 目标管理页可新增 / 编辑 / 删除目标，保存后 `uci show netmonitor` 与页面显示一致
+- 目标改用 TCP 探测方式后能真实产出握手延迟：
+  `/tmp/netmonitor/ring/<id>.tsv` 出现 `ok=1` 且延迟为数值的采样
+
 ### 异常测试
 
 - 目标不可达、网络断开、DNS 异常
@@ -482,8 +519,8 @@ uci show netmonitor
 
 ### 单元测试
 
-守护进程的三块核心逻辑（ping 解析 / 错误分类、targets.tsv 解析、分段直方图）
-有可重复运行的单元测试，覆盖 32 条断言：
+守护进程的四块核心逻辑（ping 解析 / 错误分类、targets.tsv 解析、分段直方图、
+TCP 探测与临时目录按实例隔离）有可重复运行的单元测试，覆盖 87 条断言：
 
 ```sh
 # 开发机（Git Bash / Linux）与设备上均可运行
@@ -832,11 +869,109 @@ done
 
 ---
 
+### 12.13 reload 期间临时目录被新实例清空：临时目录必须按实例隔离
+
+**现象**：设备长时间运行后，日志里零散出现
+```
+awk: can't open file /tmp/netmonitor/tmp/cloudflare.out: No such file or directory
+```
+并伴随环缓里插进空行、单次采样 `latency=null` 但 `errno=0`（既不是成功，也不是任何已知失败）。
+
+**根因**：守护进程把单次探测的中间文件写在**共享**目录 `/tmp/netmonitor/tmp/`，
+而 procd 的 `term_timeout` 是 5 秒，单次探测最长可达 `timeout*count+2` 秒。
+配置变更触发 reload 时会 `restart`，新旧两个实例在一段时间内**重叠**：
+新实例的 `setup_dirs()` 一上来就 `rm -f /tmp/netmonitor/tmp/*`，
+把旧实例正在读写的 `.out` / `.err` 直接删掉。旧实例随即 awk 读不到文件、
+把解析出的空值写进环缓。
+
+**修法**：临时目录按实例独占，回收只针对死进程。
+
+```sh
+TMP_DIR=$RUN_DIR/tmp.$$            # 每实例一个，互不干扰
+
+# setup_dirs() 里只回收「pid 已不存在」的遗留目录
+for d in "$RUN_DIR"/tmp.*; do
+    [ -d "$d" ] || continue
+    [ "$d" = "$TMP_DIR" ] && continue
+    p=${d##*/tmp.}
+    case "$p" in ''|*[!0-9]*) ;; *) [ -d "/proc/$p" ] && continue ;; esac
+    rm -rf "$d" 2>/dev/null
+done
+```
+
+`cleanup()` 也只删自己的 `$TMP_DIR`；`/etc/init.d/netmonitor` 的 start/stop 不再
+`rm -f .../tmp/*`——临时目录的生命周期完全由守护进程按 pid 负责。
+
+**判据**：连续 3 次 `reload`，日志无 `awk: can't open file`、环缓无空行、
+每次采样的 `latency` 与 `errno` 自洽。回归护栏见 `tests/test_netmon_daemon.sh` 第 6 节。
+
+---
+
+### 12.14 保存走 OpenWrt 原生 uci：`uci.apply()` 在没有改动时会报错
+
+**现象**：前端点「保存并应用」，什么都没改也弹原始 RPC 报错
+`uci/apply failed with ubus code 5: No data received`。
+
+**根因**：`uci.apply()` 底层是 rpcd 的 `uci.apply`，它在**没有待提交改动**时
+直接返回 ubus code 5（No data received）。早期前端实现是无条件
+`uci.save().then(() => uci.apply())`，于是「无改动」这个最正常的操作反而**必然**报错。
+
+**修法**：保存前逐项 `uci.get` 比对现值，只提交真正的差异；全部相同则直接返回 0，
+连 `save()` / `apply()` 都不调。
+
+```js
+var cur  = uci.get(conf, sid, opt);
+var want = (o.val == null) ? '' : String(o.val);
+var have = (cur   == null) ? '' : String(cur);
+if (have === want) continue;                 // 无差异，跳过
+if (want === '') uci.unset(conf, sid, opt);
+else             uci.set(conf, sid, opt, want);
+changed++;
+...
+if (changed === 0) return 0;                 // 不调 save / apply
+return uci.save().then(function () { return uci.apply(); });
+```
+
+**两个坑**：
+
+1. **`null` 与 `''` 必须归一**。表单清空字段得到 `''`，而设备上「该选项不存在」是 `null`。
+   若用 `o.val == null` 判断，二者被当作不同值，「清空一个本来就不存在的字段」
+   会被算成改动，照样撞上 code 5。
+2. **返回值语义要和 UI 对齐**：`0` 表示无改动，前端据此提示 `No changes to save`
+   而不是 `Saved`——否则用户会以为配置被重写了。
+
+**刻意保留的设计**：保存链路完全走 OpenWrt 原生 `uci` / `ubus`，不引入插件私有 RPC。
+实测保存过程中用到的 rpcd 方法集合为 `['apply', 'changes', 'confirm', 'get', 'set']`，
+`uci apply` 自带的超时回滚（`rollback`）也随之生效。
+
+---
+
+### 12.15 `data-nm-key` 只能挂在控件上，不能同时挂容器
+
+**现象**：端到端测试给目标编辑器的「名称」输入框赋值 `TCPUITEST`，
+脚本报告赋值成功，但保存后设备上 `uci get netmonitor.<sid>.name` 还是旧值。
+
+**根因**：`field()` 为了给设置项打标记，把 `data-nm-key="name"` **同时**挂在了
+`.nm-field` 容器 `div` 和真正的 `<input>` 上。测试用
+`document.querySelector('[data-nm-key="name"]')` 命中的是**先出现的容器 div**，
+赋值只是往一个 `div` 上挂了个临时属性，输入框根本没动——保存自然没变化，
+而测试还以为自己改成功了。这是「测试通过但功能没生效」的典型假阳性。
+
+**修法**：`data-nm-key` 只挂控件（`input` / `select`），容器一律不挂；
+测试选择器相应收紧为 `input[data-nm-key="..."]` / `select[data-nm-key="..."]`。
+
+**判据**：设置页 26 个控件的 `data-nm-key` 集合与后端 `GLOBAL_OPTS` 的 26 个键
+**完全相等（不多不少）**，且每个控件的当前值等于 `uci get` 的真实值。
+
+---
+
 ## 十三、兼容性
 
 - 目标平台：OpenWrt 主线（23.05 / 24.x 及更新版本），兼容其衍生发行版
 - LuCI：现代 JS 视图 + ucode RPC 架构（传统 Lua CBI 版本不适用）
-- 探测命令：busybox `ping` / `ping6`，同时兼容 iputils 输出格式
+- 探测命令：ICMP 模式用 busybox `ping` / `ping6`，同时兼容 iputils 输出格式；
+  TCP 模式优先用 `curl`（握手耗时取自 `%{time_connect}`），无 curl 时退化到支持 `-w` 的 `nc`
+  并用单调时钟计时；两者都不可用时 TCP 目标会明确报「其它错误」而不是静默成功
 - 主题：仅使用主题提供的 CSS 变量与 `.nm-` 私有命名空间，不影响其它页面
 
 ---
@@ -963,11 +1098,14 @@ python3 nm_svg_verify.py
 
 ## 十五、已知限制
 
-1. 探测协议当前实现为 ICMP（`proto` 已预留字段，TCP/HTTP 探测可在后续版本扩展）。
-2. `both`（IPv4 + IPv6 同时探测）当前按主地址族执行双栈解析，独立结果展示待后续版本完善。
-3. 通知功能仅提供配置位与接口预留，尚未接入具体后端。
-4. 目标级检测间隔受全局轮询周期约束，实际间隔为「不小于全局检测间隔」的最接近值。
-5. 动态图标中的目标名 / 计数等辅助文字仅在图标渲染尺寸 ≥ 84px 时出现，
+1. 探测协议已实现 ICMP 与 TCP 两种（选择方式见 6.2.1）；HTTP 层面（状态码 / 内容校验）
+   的探测尚未提供，`proto` 已是开放枚举，后续版本可扩展。
+2. TCP 模式依赖设备有 `curl`（或支持 `-w` 的 `nc`）；两者都没有时 TCP 目标会稳定报
+   「其它错误」，不会静默算成成功。
+3. `both`（IPv4 + IPv6 同时探测）当前按主地址族执行双栈解析，独立结果展示待后续版本完善。
+4. 通知功能仅提供配置位与接口预留，尚未接入具体后端。
+5. 目标级检测间隔受全局轮询周期约束，实际间隔为「不小于全局检测间隔」的最接近值。
+6. 动态图标中的目标名 / 计数等辅助文字仅在图标渲染尺寸 ≥ 84px 时出现，
    小尺寸下由旁边的文字承担（见 14.4）。
 
 ---

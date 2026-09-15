@@ -30,6 +30,8 @@ if ! uci -q show "$NM_CFG" >/dev/null 2>&1; then
 		printf "set %s.global.count='1'\n" "$NM_CFG"
 		printf "set %s.global.concurrency='5'\n" "$NM_CFG"
 		printf "set %s.global.address_family='auto'\n" "$NM_CFG"
+		printf "set %s.global.default_proto='icmp'\n" "$NM_CFG"
+		printf "set %s.global.default_tcp_port='80'\n" "$NM_CFG"
 		printf "set %s.global.interface=''\n" "$NM_CFG"
 		printf "set %s.global.source=''\n" "$NM_CFG"
 		printf "set %s.global.persistence='0'\n" "$NM_CFG"
@@ -55,6 +57,7 @@ if ! uci -q show "$NM_CFG" >/dev/null 2>&1; then
 		printf "set %s.baidu.region='cn'\n" "$NM_CFG"
 		printf "set %s.baidu.label=''\n" "$NM_CFG"
 		printf "set %s.baidu.proto='icmp'\n" "$NM_CFG"
+		printf "set %s.baidu.tcp_port='0'\n" "$NM_CFG"
 		printf "set %s.baidu.family='auto'\n" "$NM_CFG"
 		printf "set %s.baidu.interval='0'\n" "$NM_CFG"
 		printf "set %s.baidu.timeout='3'\n" "$NM_CFG"
@@ -67,6 +70,7 @@ if ! uci -q show "$NM_CFG" >/dev/null 2>&1; then
 		printf "set %s.alidns.region='cn'\n" "$NM_CFG"
 		printf "set %s.alidns.label='DNS'\n" "$NM_CFG"
 		printf "set %s.alidns.proto='icmp'\n" "$NM_CFG"
+		printf "set %s.alidns.tcp_port='0'\n" "$NM_CFG"
 		printf "set %s.alidns.family='ipv4'\n" "$NM_CFG"
 		printf "set %s.alidns.interval='0'\n" "$NM_CFG"
 		printf "set %s.alidns.timeout='3'\n" "$NM_CFG"
@@ -79,6 +83,7 @@ if ! uci -q show "$NM_CFG" >/dev/null 2>&1; then
 		printf "set %s.cloudflare.region='overseas'\n" "$NM_CFG"
 		printf "set %s.cloudflare.label='DNS'\n" "$NM_CFG"
 		printf "set %s.cloudflare.proto='icmp'\n" "$NM_CFG"
+		printf "set %s.cloudflare.tcp_port='0'\n" "$NM_CFG"
 		printf "set %s.cloudflare.family='ipv4'\n" "$NM_CFG"
 		printf "set %s.cloudflare.interval='0'\n" "$NM_CFG"
 		printf "set %s.cloudflare.timeout='3'\n" "$NM_CFG"
@@ -91,6 +96,7 @@ if ! uci -q show "$NM_CFG" >/dev/null 2>&1; then
 		printf "set %s.googledns.region='overseas'\n" "$NM_CFG"
 		printf "set %s.googledns.label='DNS'\n" "$NM_CFG"
 		printf "set %s.googledns.proto='icmp'\n" "$NM_CFG"
+		printf "set %s.googledns.tcp_port='0'\n" "$NM_CFG"
 		printf "set %s.googledns.family='ipv4'\n" "$NM_CFG"
 		printf "set %s.googledns.interval='0'\n" "$NM_CFG"
 		printf "set %s.googledns.timeout='3'\n" "$NM_CFG"
@@ -98,6 +104,17 @@ if ! uci -q show "$NM_CFG" >/dev/null 2>&1; then
 		printf "set %s.googledns.remark=''\n" "$NM_CFG"
 	} | uci -q batch
 
+	uci -q commit "$NM_CFG"
+fi
+
+# 升级补齐：只写「本版本新增、且当前确实缺失」的选项，绝不覆盖用户已有取值。
+# 缺少这些选项时守护进程会回落到脚本内置默认值，功能不受影响；
+# 这里补上是为了让 /etc/config/netmonitor 与实际生效配置保持可读一致。
+if ! uci -q get "$NM_CFG.global.default_proto" >/dev/null 2>&1; then
+	{
+		printf "set %s.global.default_proto='icmp'\n" "$NM_CFG"
+		printf "set %s.global.default_tcp_port='80'\n" "$NM_CFG"
+	} | uci -q batch
 	uci -q commit "$NM_CFG"
 fi
 

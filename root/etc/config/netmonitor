@@ -16,6 +16,11 @@ config global 'global'
 	option concurrency '5'
 	# 地址族：auto / ipv4 / ipv6
 	option address_family 'auto'
+	# 默认探测方式：icmp = ICMP echo（ping） / tcp = TCP 连接握手
+	# 单个目标可用自己的 option proto 覆盖本项
+	option default_proto 'icmp'
+	# TCP 模式的默认端口，供未单独指定 tcp_port 的目标使用
+	option default_tcp_port '80'
 	# 出接口（可选，留空走默认路由）
 	option interface ''
 	# 源地址（可选）
@@ -50,6 +55,14 @@ config global 'global'
 # ---------------------------------------------------------------- 示例目标
 # region 由用户自行指定，不使用任何内置 IP 归属库：
 #   cn=国内  overseas=国外  other=其他
+#
+# 每个目标都可以用 proto 单独选择探测方式：
+#   proto 'icmp'  ICMP echo，最贴近传统 ping
+#   proto 'tcp'   TCP 连接握手，被 ICMP 屏蔽的网络里依然可用
+# TCP 目标需要端口：
+#   tcp_port '0'     跟随全局 default_tcp_port
+#   tcp_port '443'   使用本目标自己的端口
+# TCP 模式下 interval / timeout / 并发 / 地址族照常生效，只是不适用 count。
 
 config target 'baidu'
 	option name 'Baidu'
@@ -57,6 +70,7 @@ config target 'baidu'
 	option region 'cn'
 	option label ''
 	option proto 'icmp'
+	option tcp_port '0'
 	option family 'auto'
 	option interval '0'
 	option timeout '3'
@@ -69,6 +83,7 @@ config target 'alidns'
 	option region 'cn'
 	option label 'DNS'
 	option proto 'icmp'
+	option tcp_port '0'
 	option family 'ipv4'
 	option interval '0'
 	option timeout '3'
@@ -81,6 +96,7 @@ config target 'cloudflare'
 	option region 'overseas'
 	option label 'DNS'
 	option proto 'icmp'
+	option tcp_port '0'
 	option family 'ipv4'
 	option interval '0'
 	option timeout '3'
@@ -93,6 +109,7 @@ config target 'googledns'
 	option region 'overseas'
 	option label 'DNS'
 	option proto 'icmp'
+	option tcp_port '0'
 	option family 'ipv4'
 	option interval '0'
 	option timeout '3'

@@ -12,9 +12,20 @@
 #      避免每次检测都全量重算历史，CPU 占用与历史长度无关。
 #   3. 严格校验用户输入，ping 目标始终以引号包裹且禁止以 '-' 开头，杜绝命令注入。
 #   4. 任何异常都被收敛为明确的错误码（超时 / DNS / 不可达 / 其它），不笼统报「网络异常」。
+#   5. 每个目标可独立选择探测方式：icmp（默认，ping 回显）或 tcp（TCP 连接握手）。
+#      TCP 探测优先使用 curl 的 %{time_connect} 作为握手 RTT；因为固件自带的 nc
+#      常为精简版 busybox applet（usage 只有 `nc [IPADDR PORT]`，不支持 -w），
+#      既无法限制超时也不能「只建连不传数据」，直接用于探测会挂住整轮检测，
+#      所以只有当 nc 确实支持 -w 时才把它作为后备。两者都不可用时 TCP 目标
+#      统一报 errno=4，并在日志中给出一次明确提示。
+#      TCP 模式下 count 不适用：一次探测只建立一次连接，按 1 个「包」统计。
 #
 # 运行期文件（全部位于 /tmp/netmonitor）
+#   tmp.<pid>/             本实例独占的临时目录（按 pid 隔离，见下方说明）
 #   targets.tsv            本轮生效的目标清单（配置重载时重建）
+#                          列（TAB 分隔）：
+#                            sid name host region proto timeout interval
+#                            family iface source label remark port
 #   tick                   心跳时间戳，前端据此判断后台是否真的在跑
 #   state/<id>             目标运行时状态（上次检测时间、连续失败次数…）
 #   ring/<id>.tsv          原始采样点环形缓存（t, latency, ok, errno）
@@ -33,7 +44,13 @@ RUN_DIR=/tmp/netmonitor
 RING_DIR=$RUN_DIR/ring
 HIST_DIR=$RUN_DIR/hist
 STATE_DIR=$RUN_DIR/state
-TMP_DIR=$RUN_DIR/tmp
+# 临时目录按实例隔离：一个实例只用自己的 tmp.<pid>。
+# reload 触发 restart 时，procd 的 term_timeout 是 5s，而一次 ping 最长要跑
+# timeout*count+2 秒，旧实例往往在新实例起来之后还在收尾；若两者共用一个
+# tmp 目录，新实例启动时的清理会删掉旧实例正在写的 .out，旧实例随即解析
+# 失败并写出全空结果——日志里会出现 `awk: ... No such file or directory`、
+# 一条 `check failed (errno=)` 的假告警，环缓存里还会多出一条空采样。
+TMP_DIR=$RUN_DIR/tmp.$$
 PERSIST_DIR=/etc/netmonitor/history
 TAG=netmonitor
 
@@ -46,6 +63,7 @@ NB=17
 TAB=$(printf '\t')
 
 # 错误码：0 成功 / 1 超时 / 2 DNS 解析失败 / 3 网络不可达 / 4 其它错误 / 5 非法目标
+# TCP 模式下「连接被拒绝」归入 3：主机可达，但该端口上没有服务在监听。
 E_OK=0
 E_TIMEOUT=1
 E_DNS=2
@@ -55,6 +73,10 @@ E_INVALID=5
 
 RELOAD=1
 STOP=0
+
+# TCP 探测工具：curl（首选，微秒级握手耗时） / nc（后备，需支持 -w） / none
+TCP_TOOL=none
+TCP_WARNED=0
 
 # ---------------------------------------------------------------- 全局配置
 G_ENABLED=1
@@ -72,6 +94,8 @@ G_MAX_POINTS=4320
 G_LOG_LEVEL=info
 G_FAIL_WARN=3
 G_FAIL_CRITICAL=5
+G_DEFAULT_PROTO=icmp
+G_DEFAULT_TCP_PORT=80
 
 # ---------------------------------------------------------------- 工具函数
 log_msg() {
@@ -143,11 +167,26 @@ retention_seconds() {
 }
 
 setup_dirs() {
+	local d p
+
 	mkdir -p "$RUN_DIR" "$RING_DIR" "$HIST_DIR" "$STATE_DIR" "$TMP_DIR"
 	if [ "$G_PERSISTENCE" = "1" ]; then
 		mkdir -p "$PERSIST_DIR"
 	fi
-	rm -f "$TMP_DIR"/* 2>/dev/null
+
+	# 自己的目录刚建出来，本来就是空的；这里只回收「进程已不存在」的遗留
+	# tmp.<pid>。正在运行的实例（含刚被 restart 顶掉、仍在 term_timeout 内
+	# 收尾的旧实例）一律不碰。
+	for d in "$RUN_DIR"/tmp.*; do
+		[ -d "$d" ] || continue
+		[ "$d" = "$TMP_DIR" ] && continue
+		p=${d##*/tmp.}
+		case "$p" in
+			''|*[!0-9]*) ;;
+			*) [ -d "/proc/$p" ] && continue ;;
+		esac
+		rm -rf "$d" 2>/dev/null
+	done
 }
 
 zeros_hist() {
@@ -182,6 +221,8 @@ load_config() {
 	config_get G_LOG_LEVEL global log_level info
 	config_get G_FAIL_WARN global fail_warn 3
 	config_get G_FAIL_CRITICAL global fail_critical 5
+	config_get G_DEFAULT_PROTO global default_proto icmp
+	config_get G_DEFAULT_TCP_PORT global default_tcp_port 80
 
 	G_INTERVAL=$(clamp "$G_INTERVAL" 1 3600)
 	G_TIMEOUT=$(clamp "$G_TIMEOUT" 1 30)
@@ -195,6 +236,19 @@ load_config() {
 	valid_iface "$G_IFACE" || G_IFACE=''
 	valid_iface "$G_SOURCE" || G_SOURCE=''
 
+	case "$G_DEFAULT_PROTO" in
+		icmp|tcp) ;;
+		*) G_DEFAULT_PROTO=icmp ;;
+	esac
+	G_DEFAULT_TCP_PORT=$(clamp "$G_DEFAULT_TCP_PORT" 1 65535)
+
+	# 探测工具只需在配置加载时判定一次
+	tcp_tool_probe
+	if [ "$TCP_TOOL" = "none" ] && [ "$TCP_WARNED" != "1" ]; then
+		TCP_WARNED=1
+		log_msg warning "TCP probe unavailable: install curl (or a nc supporting -w); TCP targets will report errno=4"
+	fi
+
 	# 目标清单 -> targets.tsv
 	: > "$RUN_DIR/targets.tsv"
 	config_foreach nm_append_target target
@@ -202,15 +256,16 @@ load_config() {
 
 nm_append_target() {
 	local sid="$1"
-	local name host region proto family interval timeout iface source label enabled remark
+	local name host region proto family interval timeout iface source label enabled remark tcp_port
 
 	config_get name "$sid" name "$sid"
 	config_get host "$sid" host ''
 	config_get region "$sid" region other
-	config_get proto "$sid" proto icmp
+	config_get proto "$sid" proto "$G_DEFAULT_PROTO"
 	config_get family "$sid" family auto
 	config_get interval "$sid" interval 0
 	config_get timeout "$sid" timeout 0
+	config_get tcp_port "$sid" tcp_port 0
 	config_get iface "$sid" interface ''
 	config_get source "$sid" source ''
 	config_get label "$sid" label ''
@@ -244,9 +299,20 @@ nm_append_target() {
 	is_uint "$interval" || interval=0
 	is_uint "$timeout" || timeout=0
 
-	printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+	# proto 只允许 icmp / tcp；tcp 目标未指定端口时继承全局默认端口
+	case "$proto" in
+		icmp|tcp) ;;
+		*) proto="$G_DEFAULT_PROTO" ;;
+	esac
+	is_uint "$tcp_port" || tcp_port=0
+	[ "$tcp_port" -gt 65535 ] && tcp_port=65535
+	if [ "$proto" = "tcp" ] && [ "$tcp_port" -lt 1 ]; then
+		tcp_port="$G_DEFAULT_TCP_PORT"
+	fi
+
+	printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
 		"$sid" "$name" "$host" "$region" "$proto" "$timeout" "$interval" \
-		"$family" "$iface" "$source" "$label" "$remark" >> "$RUN_DIR/targets.tsv"
+		"$family" "$iface" "$source" "$label" "$remark" "$tcp_port" >> "$RUN_DIR/targets.tsv"
 }
 
 # 目标实际使用的检测间隔（0 表示跟随全局）
@@ -265,21 +331,211 @@ target_timeout() {
 	printf '%s' "$tv"
 }
 
+# ---------------------------------------------------------------- TCP 探测
+#
+# 为什么不用 nc 作为默认实现：OpenWrt 固件里的 nc 常见为精简版 busybox applet
+# （usage 只有 `nc [IPADDR PORT]`），既不支持 -w 超时，也不能「只建连不传数据」。
+# 拿它去探测一个被丢弃（DROP）的端口会永久阻塞，进而挂住整轮并发检测。
+#
+# 因此 TCP 探测的首选实现是 curl：
+#   * --connect-timeout 限定握手超时，保证探测有上界；
+#   * -w '%{time_connect}' 直接输出 TCP 三次握手耗时（微秒精度），
+#     语义上正好等于「TCP ping」的 RTT。
+# 而 busybox 的 date 不支持 %N（实测 `date +%s%N` 只返回秒），纯 shell 无法
+# 自行测量毫秒级耗时，这也是必须依赖 curl 的原因。
+#
+# 只有在设备确实没有 curl、且 nc 支持 -w 时，才退化到 nc + /proc/uptime 计时
+# （/proc/uptime 只有 10ms 精度，且无法绑定接口/源地址）。
+
+tcp_tool_probe() {
+	TCP_TOOL=none
+
+	if command -v curl >/dev/null 2>&1; then
+		TCP_TOOL=curl
+		return 0
+	fi
+
+	if command -v nc >/dev/null 2>&1; then
+		# 精简 busybox nc 遇到 -w 会直接打印 Usage；支持 -w 的 nc 不会。
+		# 这里探测的是本机回环端口，连接会被立即拒绝，不会长时间阻塞。
+		if ! nc -w 1 127.0.0.1 1 </dev/null 2>&1 | grep -q 'Usage'; then
+			TCP_TOOL=nc
+			return 0
+		fi
+	fi
+
+	return 0
+}
+
+# 单调时钟（毫秒）。只能退到 /proc/uptime，精度 10ms。
+mono_ms() {
+	local up
+	up=$(cut -d' ' -f1 /proc/uptime 2>/dev/null)
+	case "$up" in
+		''|*[!0-9.]*)
+			printf '0'
+			return 0
+			;;
+	esac
+	awk -v v="$up" 'BEGIN { printf "%d", v * 1000 + 0.5 }'
+}
+
+# TCP 失败归类：tcp_errno <工具> <退出码> <stderr 文件>
+tcp_errno() {
+	local tool="$1" rc="$2" errf="$3"
+	local msg
+	msg=$(cat "$errf" 2>/dev/null)
+
+	case "$tool" in
+		curl)
+			case "$rc" in
+			6)  printf '%s' "$E_DNS" ;;      # CURLE_COULDNT_RESOLVE_HOST
+			28) printf '%s' "$E_TIMEOUT" ;;  # CURLE_OPERATION_TIMEDOUT
+			7)  # CURLE_COULDNT_CONNECT：区分「无响应」与「被拒绝」
+				case "$msg" in
+					*imed*out*|*imeout*) printf '%s' "$E_TIMEOUT" ;;
+					*) printf '%s' "$E_UNREACH" ;;
+				esac
+				;;
+			*)  printf '%s' "$E_OTHER" ;;
+			esac
+			;;
+		nc)
+			case "$msg" in
+				*efused*)                printf '%s' "$E_UNREACH" ;;
+				*imed*out*|*imeout*)     printf '%s' "$E_TIMEOUT" ;;
+				*unknow*|*bad\ address*|*esolv*) printf '%s' "$E_DNS" ;;
+				*nreachable*|*route*)    printf '%s' "$E_UNREACH" ;;
+				*)                       printf '%s' "$E_OTHER" ;;
+			esac
+			;;
+		*)
+			printf '%s' "$E_OTHER"
+			;;
+	esac
+}
+
+# TCP 连接探测。成功时以握手耗时（毫秒）作为延迟；失败时归类到明确 errno。
+# 一次连接计为一个「包」（sent=1），因此 TCP 模式下的丢包率等于失败采样占比。
+run_check_tcp() {
+	# run_check_tcp <id> <host> <port> <timeout> <family> <iface> <source>
+	local id="$1" host="$2" port="$3" timeout="$4" family="$5" iface="$6" source="$7"
+	local res="$TMP_DIR/$id.res"
+	local out="$TMP_DIR/$id.out"
+	local errf="$TMP_DIR/$id.err"
+	local lat='-' ok=0 eno=$E_OTHER sent=1 recv=0
+	local dev= fam_opt= tc= url= rc= tcval= parsed= t0= t1= nc_host=
+
+	if [ "$TCP_TOOL" = "none" ]; then
+		printf '%s\t%s\t%s\t%s\t%s\n' '-' '0' "$E_OTHER" "$sent" '0' > "$res"
+		return 0
+	fi
+
+	: > "$out"
+	: > "$errf"
+
+	# 调用方已做全局回退，这里再兜一次，保证单独调用本函数也正确
+	[ -n "$iface" ] || iface="$G_IFACE"
+	[ -n "$source" ] || source="$G_SOURCE"
+	# 源地址比出接口更具体，优先绑定源地址
+	dev="$iface"
+	[ -n "$source" ] && dev="$source"
+
+	case "$family" in
+		ipv4) fam_opt='-4' ;;
+		ipv6) fam_opt='-6' ;;
+	esac
+
+	if [ "$TCP_TOOL" = "curl" ]; then
+		# URL 中的 IPv6 字面量必须加方括号；host 与 port 都经白名单校验后
+		# 作为独立参数传入，不做 shell 二次解释，杜绝注入。
+		case "$host" in
+			*:*) tc="[$host]" ;;
+			*)   tc="$host" ;;
+		esac
+		url="http://$tc:$port/"
+
+		# -q                  忽略 ~/.curlrc
+		# --noproxy=*         避免被环境里的 http_proxy 改写探测目标
+		# -m / --connect-timeout  限定整体与握手超时
+		# -w '%{time_connect}'    TCP 握手耗时（秒，微秒精度）
+		set -- curl -q -s -o /dev/null \
+			-m "$timeout" --connect-timeout "$timeout" \
+			'--noproxy=*' -w '%{time_connect}'
+		[ -n "$fam_opt" ] && set -- "$@" "$fam_opt"
+		[ -n "$dev" ] && set -- "$@" --interface "$dev"
+		set -- "$@" "$url"
+
+		rc=0
+		"$@" > "$out" 2> "$errf" || rc=$?
+
+		tcval=$(cat "$out" 2>/dev/null)
+		case "$tcval" in
+			''|*[!0-9.]*) tcval=0 ;;
+		esac
+
+		# 连接成功 ⇔ time_connect > 0（握手失败时 curl 输出 0.000000）
+		parsed=$(awk -v v="$tcval" 'BEGIN {
+			if (v + 0 > 0) printf "%.3f\t1\n", v * 1000;
+			else           printf "-\t0\n";
+		}')
+		lat=$(printf '%s' "$parsed" | cut -f1)
+		ok=$(printf '%s' "$parsed" | cut -f2)
+	else
+		# 后备路径：nc（支持 -w）。精简 nc 无 -s，无法绑定接口/源地址。
+		nc_host="$host"
+		case "$nc_host" in
+			\[*\]*) nc_host=$(printf '%s' "$nc_host" | sed -e 's/^\[//' -e 's/\]$//') ;;
+		esac
+
+		t0=$(mono_ms)
+		rc=0
+		nc -w "$timeout" "$nc_host" "$port" </dev/null > "$out" 2> "$errf" || rc=$?
+		t1=$(mono_ms)
+
+		if [ "$rc" = "0" ]; then
+			ok=1
+			lat=$((t1 - t0))
+			[ "$lat" -lt 0 ] && lat=0
+		fi
+	fi
+
+	if [ "$ok" = "1" ]; then
+		eno=$E_OK
+		recv=$sent
+	else
+		lat='-'
+		recv=0
+		eno=$(tcp_errno "$TCP_TOOL" "$rc" "$errf")
+	fi
+
+	printf '%s\t%s\t%s\t%s\t%s\n' "$lat" "$ok" "$eno" "$sent" "$recv" > "$res"
+	rm -f "$out" "$errf"
+	return 0
+}
+
 # ---------------------------------------------------------------- 单次检测
 run_check() {
-	# run_check <id> <host> <timeout> <family> <iface> <source>
-	local id="$1" host="$2" timeout="$3" family="$4" iface="$5" source="$6"
+	# run_check <id> <host> <proto> <port> <timeout> <family> <iface> <source>
+	local id="$1" host="$2" proto="$3" port="$4" timeout="$5" family="$6"
+	local iface="$7" source="$8"
 	local out="$TMP_DIR/$id.out"
 	local res="$TMP_DIR/$id.res"
 	local cmd=ping
 	local deadline rc parsed lat ok eno sent recv
 
-	: > "$out"
-
 	if ! valid_host "$host"; then
 		printf '%s\t%s\t%s\t%s\t%s\n' '-' '0' "$E_INVALID" "$G_COUNT" '0' > "$res"
 		return 0
 	fi
+
+	# TCP 模式走独立的连接探测路径
+	if [ "$proto" = "tcp" ]; then
+		run_check_tcp "$id" "$host" "$port" "$timeout" "$family" "$iface" "$source"
+		return 0
+	fi
+
+	: > "$out"
 
 	case "$family" in
 		ipv6) command -v ping6 >/dev/null 2>&1 && cmd=ping6 ;;
@@ -419,14 +675,14 @@ trim_ring() {
 
 # ---------------------------------------------------------------- 一轮检测
 run_round() {
-	local now id name host region proto timeout tinterval family iface source label remark
+	local now id name host region proto timeout tinterval family iface source label remark port
 	local st last next plast pok peno sfail sok last_ok total
 	local iv tv running=0
 
 	now=$(date +%s)
 	running=0
 
-	while IFS="$TAB" read -r id name host region proto timeout tinterval family iface source label remark; do
+	while IFS="$TAB" read -r id name host region proto timeout tinterval family iface source label remark port; do
 		[ -n "$id" ] || continue
 		# 还原写入时的空字段占位符
 		[ "$name" = '-' ] && name=''
@@ -455,7 +711,7 @@ run_round() {
 			auto) family="$G_FAMILY" ;;
 		esac
 
-		run_check "$id" "$host" "$tv" "$family" "$iface" "$source" &
+		run_check "$id" "$host" "$proto" "$port" "$tv" "$family" "$iface" "$source" &
 		running=$((running + 1))
 		if [ "$running" -ge "$G_CONCURRENCY" ]; then
 			wait
@@ -470,12 +726,12 @@ run_round() {
 
 collect_results() {
 	local now="$1"
-	local id name host region proto timeout tinterval family iface source label remark
+	local id name host region proto timeout tinterval family iface source label remark port
 	local res lat ok eno sent recv
 	local st last next plast pok peno sfail sok last_ok total
 	local iv
 
-	while IFS="$TAB" read -r id name host region proto timeout tinterval family iface source label remark; do
+	while IFS="$TAB" read -r id name host region proto timeout tinterval family iface source label remark port; do
 		[ -n "$id" ] || continue
 		# 还原写入时的空字段占位符
 		[ "$name" = '-' ] && name=''
@@ -541,13 +797,13 @@ collect_results() {
 maybe_persist() {
 	[ "$G_PERSISTENCE" = "1" ] || return 0
 	local now="$1"
-	local id name host region proto timeout tinterval family iface source label remark
+	local id name host region proto timeout tinterval family iface source label remark port
 	local retention cut last pf lastf agg
 
 	retention=$(retention_seconds "$G_HISTORY")
 	cut=$((now - retention))
 
-	while IFS="$TAB" read -r id name host region proto timeout tinterval family iface source label remark; do
+	while IFS="$TAB" read -r id name host region proto timeout tinterval family iface source label remark port; do
 		[ -n "$id" ] || continue
 		# 还原写入时的空字段占位符
 		[ "$name" = '-' ] && name=''
@@ -611,7 +867,7 @@ sleep_tick() {
 }
 
 cleanup() {
-	rm -f "$TMP_DIR"/* 2>/dev/null
+	rm -rf "$TMP_DIR" 2>/dev/null
 	log_msg info "daemon exited"
 }
 
@@ -627,7 +883,7 @@ main() {
 	trap 'STOP=1' TERM INT
 	trap 'cleanup' EXIT
 
-	log_msg info "daemon started (interval=${G_INTERVAL}s, timeout=${G_TIMEOUT}s, targets=$(wc -l < "$RUN_DIR/targets.tsv"))"
+	log_msg info "daemon started (interval=${G_INTERVAL}s, timeout=${G_TIMEOUT}s, default-proto=${G_DEFAULT_PROTO}, tcp-tool=${TCP_TOOL}, targets=$(wc -l < "$RUN_DIR/targets.tsv"))"
 
 	while [ "$STOP" != "1" ]; do
 		if [ "$RELOAD" = "1" ]; then

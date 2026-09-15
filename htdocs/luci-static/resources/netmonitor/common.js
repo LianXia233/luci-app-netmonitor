@@ -8,6 +8,7 @@
 'use strict';
 'require rpc';
 'require ui';
+'require uci';
 'require netmonitor.icons as icons';
 
 var CSS_ID = 'nm-netmonitor-css';
@@ -118,6 +119,93 @@ var api = {
 	stopService: function() { return call('stop_service', {}); },
 	restartService: function() { return call('restart_service', {}); }
 };
+
+/* ------------------------------------------------------------ UCI 事务
+ *
+ * 所有配置写入都走 OpenWrt 原生链路（LuCI 的 uci 模块，底层就是 rpcd 的 uci
+ * 对象），与 LuCI 自带页面完全一致：
+ *
+ *     uci.get / uci.set / uci.unset   比较现值、写入候选改动
+ *     uci.save()            把候选改动落盘（新增/修改/删除一并提交）；
+ *                           与设备现值一致的项会被跳过（见 saveConfig 注释）
+ *     uci.apply()           rpcd uci.apply{rollback:true, timeout:N}
+ *                           真正 commit，并调用 /sbin/reload_config；
+ *                           procd 的 reload trigger 随即执行
+ *                           /etc/init.d/netmonitor reload。
+ *                           apply 期间若设备失联，超时后自动回滚到上一份配置。
+ *
+ * 刻意不再经过插件私有的 set_config / add_target 等 RPC：那些方法虽然也是
+ * 用 libuci 写同一份配置，但自成一个没有提交/回滚/触发器语义的平行通道，
+ * 一旦两条通道并存，就会出现「界面已保存、系统未重载」这类难以定位的差异。
+ */
+
+/* 写入一批选项后统一 save + apply。
+ * ops: [{ conf?, sid, opt, val }]，val 为 null 表示删除该选项。
+ *
+ * 返回值是「真正写下去的项数」：
+ *   0 表示填的值与设备现状完全一致，没有需要提交的改动，此时不调用
+ *   uci.save()/uci.apply()。这一点很关键——无改动时 rpcd 的 uci.apply
+ *   会直接报错（实测 ubus code 5: No data received），调用方若照常弹
+ *   「保存失败」，用户看到的就是一条原始 RPC 报错；同时也能避免无意义的
+ *   commit 写 Flash。
+ * 与 LuCI 自带页面一致：只提交与设备现值不同的项。
+ *
+ * 比较时把「选项不存在」与「空字符串」视为同一个状态：表单里清空的字段
+ * 传上来就是 ''，而设备上该选项本来就不存在（uci.get 返回 null）。
+ * 若按字面比较，这种情况会被算成一次改动，最后仍然走到 apply，
+ * 于是又撞上同一条 NO_DATA 报错——实测就是这么暴露出来的。
+ * 空值统一按「删除该选项」处理，配置文件里不会残留 option x ''。 */
+function saveConfig(ops) {
+	var conf = 'netmonitor';
+	return uci.load(conf).then(function() {
+		var changed = 0;
+
+		for (var i = 0; i < ops.length; i++) {
+			var o = ops[i];
+			var c = o.conf || conf;
+			var cur = uci.get(c, o.sid, o.opt);
+			var want = (o.val == null) ? '' : String(o.val);
+			var have = (cur == null) ? '' : String(cur);
+
+			if (have === want)
+				continue;
+
+			if (want === '')
+				uci.unset(c, o.sid, o.opt);
+			else
+				uci.set(c, o.sid, o.opt, want);
+			changed++;
+		}
+
+		if (changed === 0)
+			return 0;
+
+		return uci.save().then(function() {
+			return uci.apply();
+		}).then(function() {
+			return changed;
+		});
+	});
+}
+
+/* 新增一个 UCI 段、写入键值，最后统一 save + apply；resolve 新的段名。
+ * 新段一定是有改动的，不需要像 saveConfig 那样先比对现值。 */
+function addSection(conf, type, values) {
+	var sid = null;
+	return uci.load(conf).then(function() {
+		sid = uci.add(conf, type);
+		for (var k in values) {
+			if (values[k] == null)
+				continue;
+			uci.set(conf, sid, k, String(values[k]));
+		}
+		return uci.save();
+	}).then(function() {
+		return uci.apply();
+	}).then(function() {
+		return sid;
+	});
+}
 
 /* ---------------------------------------------------------------- 格式化 */
 
@@ -417,6 +505,8 @@ return Class.extend({
 	loadI18n: loadI18n,
 	api: api,
 	call: call,
+	saveConfig: saveConfig,
+	addSection: addSection,
 	fmt: {
 		num: num,
 		latency: latency,
