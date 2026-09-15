@@ -76,15 +76,70 @@ jobs:
       - name: Configure
         shell: sh
         run: |
-          set -eu
           cd "$SDK_DIR"
-          make defconfig
+
+          # 保留 defconfig 输出，用于判定 Kconfig 是否报递归依赖。
+          # SDK 镜像预置的构建期 Kconfig 中 attendedsysupgrade-common 会选中 rpcd，
+          # 一旦本包同时声明 +rpcd，就形成
+          #   luci-app-netmonitor -> rpcd <- attendedsysupgrade-common -> luci-app-netmonitor
+          # 的递归依赖，conf 工具报错后不产出可用 .config，
+          # 后续 package/<name>/compile 目标随之消失。
+          set +e
+          make defconfig 2>&1 | tee /tmp/defconfig.log
+          set -e
+
+          if grep -q 'recursive dependency detected' /tmp/defconfig.log; then
+            echo "::warning::Kconfig recursive dependency detected, neutralizing SDK preset packages"
+            grep -n 'attendedsysupgrade' /tmp/defconfig.log | head -20 || true
+
+            # 本包与该系统组件无关，移除其包定义后递归依赖的另一端不再存在
+            targets=""
+            for f in $(grep -rl 'attendedsysupgrade-common' package/ --include=Makefile 2>/dev/null || true); do
+              case "$f" in
+                package/luci-app-netmonitor/*) continue ;;
+              esac
+              echo "    removing $(dirname "$f")"
+              targets="$targets $(dirname "$f")"
+            done
+            for d in $targets; do rm -rf "$d"; done
+
+            # 丢弃由旧 package/ 生成的 Kconfig 与索引，强制重新生成
+            rm -f tmp/.packageinfo tmp/.packagedeps tmp/.config-package.in \
+                  tmp/.config-target.in Config-build.in
+
+            set +e
+            make defconfig 2>&1 | tee /tmp/defconfig.log
+            set -e
+          fi
+
+          echo "===== Kconfig context for diagnosis ====="
+          grep -n -A16 'config PACKAGE_luci-app-netmonitor' tmp/.config-package.in 2>/dev/null || echo "(symbol absent)"
+          echo "----- attendedsysupgrade references in .config-package.in -----"
+          grep -n 'attendedsysupgrade' tmp/.config-package.in 2>/dev/null | head -20 || echo "(none)"
+          echo "----- attendedsysupgrade block in Config-build.in -----"
+          grep -n -A14 'config PACKAGE_attendedsysupgrade-common' Config-build.in 2>/dev/null || echo "(none)"
+          echo "===== end context ====="
+
+          # 无论 conf 是否完整写出配置，都显式启用本包
+          sed -i '/^CONFIG_PACKAGE_luci-app-netmonitor=/d' .config 2>/dev/null || true
+          echo 'CONFIG_PACKAGE_luci-app-netmonitor=y' >> .config
+          grep -c '^CONFIG_TARGET_' .config 2>/dev/null || echo "0 target symbols (config incomplete)"
 
       - name: Build package and translations
         shell: sh
         run: |
           set -eu
           cd "$SDK_DIR"
+
+          # Kconfig 未收敛时包索引不会生成，这里给出可定位的失败信息
+          if [ ! -f tmp/.packageinfo ]; then
+            echo "::error::tmp/.packageinfo missing - Kconfig did not converge"
+            echo "----- .config head -----"
+            sed -n '1,40p' .config 2>/dev/null || true
+            exit 1
+          fi
+          echo "==> packageinfo entries for $PKG_NAME: $(grep -c "^Package: $PKG_NAME\$" tmp/.packageinfo || true)"
+
           make package/$PKG_NAME/compile V=s
 
           # luci.mk 会依据 po/ 下的语言目录生成对应的

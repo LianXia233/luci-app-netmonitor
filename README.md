@@ -232,12 +232,22 @@ ubus list | grep netmonitor          # 应无输出
 
 ### 5.4 依赖
 
+本包直接声明的依赖（`Makefile` 中的 `LUCI_DEPENDS`）：
+
 ```
-luci-base  luci-mod-status  rpcd  rpcd-mod-ucode
-ucode  ucode-mod-fs  ucode-mod-uci  ucode-mod-ubus  ucode-mod-uloop
+luci-base  luci-mod-status
+ucode-mod-fs  ucode-mod-uci  ucode-mod-ubus  ucode-mod-uloop
 ```
 
-全部为 OpenWrt 主线自带组件，无需额外源。
+运行时实际需要、但由 `luci-base` 传递提供的组件：
+
+```
+rpcd  rpcd-mod-file  rpcd-mod-luci  rpcd-mod-ucode  cgi-io  ucode
+```
+
+全部为 OpenWrt 主线自带组件，无需额外软件源。
+
+`rpcd` / `rpcd-mod-ucode` / `ucode` 三项**不在本包显式声明**，这是刻意的：`luci-base` 的 `LUCI_DEPENDS` 已完整包含它们，重复声明会在 SDK 构建环境下触发 Kconfig 递归依赖，详见 12.9。
 
 ---
 
@@ -621,6 +631,44 @@ OpenWrt 的 shell 是 BusyBox ash，CRLF 会让 `\r` 成为脚本内容的一部
 rm -f /tmp/luci-indexcache*; rm -rf /tmp/luci-modulecache
 /etc/init.d/rpcd restart
 ```
+
+### 12.9 SDK 构建：Kconfig 递归依赖使 `package/<name>/compile` 目标消失
+
+**现象**：GitHub Actions 中 `make defconfig` 步骤退出码为 0，但下一步报
+
+```
+make[1]: *** No rule to make target 'package/luci-app-netmonitor/compile'.  Stop.
+make: *** [include/toplevel.mk:226: package/luci-app-netmonitor/compile] Error 2
+```
+
+**根因**：`make defconfig` 期间 Kconfig 检测到递归依赖：
+
+```
+tmp/.config-package.in:47303:error: recursive dependency detected!
+	symbol PACKAGE_luci-app-netmonitor depends on PACKAGE_rpcd
+Config-build.in:6189:	symbol PACKAGE_rpcd is selected by PACKAGE_attendedsysupgrade-common
+tmp/.config-package.in:31:	symbol PACKAGE_attendedsysupgrade-common is selected by PACKAGE_luci-app-netmonitor
+```
+
+`conf` 工具报错后**不产出可用的 `.config`**，而 `package/<name>/compile` 这类目标是
+由 `tmp/.packageinfo` 动态生成的，该索引又依赖 `.config`。`.config` 缺失/不完整
+（`CONFIG_TARGET_*` 为空）时，包索引为空，于是 `compile` 目标根本不存在——错误信息
+指向 target 缺失，而非真正的 Kconfig 失败。
+
+`attendedsysupgrade-common` 是 SDK 镜像预置构建期 Kconfig 中的系统组件，与本包无任何
+关系；环成立只是因为本包又显式声明了 `+rpcd`。
+
+**修法（两层）**：
+
+1. `Makefile` 中不再显式声明 `+rpcd` / `+rpcd-mod-ucode` / `+ucode`。
+   `luci-base` 的 `LUCI_DEPENDS` 已包含这三项，语义无损，而环中属于本包的那条边消失。
+2. `.github/workflows/build.yml` 的 Configure 步骤做成可自愈：若 `defconfig` 日志中
+   出现 `recursive dependency detected`，则移除提供 `attendedsysupgrade-common` 的
+   包目录、清掉 `tmp/.packageinfo` 与生成的 Kconfig 后重跑一次，并始终打印本包与
+   冲突组件的 Kconfig 片段，便于后续定位。
+
+**判据**：构建日志中 `grep -c '^CONFIG_TARGET_' .config` 必须非 0，`tmp/.packageinfo`
+必须存在。
 
 ---
 
