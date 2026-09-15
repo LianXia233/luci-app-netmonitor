@@ -641,32 +641,55 @@ make[1]: *** No rule to make target 'package/luci-app-netmonitor/compile'.  Stop
 make: *** [include/toplevel.mk:226: package/luci-app-netmonitor/compile] Error 2
 ```
 
-**根因**：`make defconfig` 期间 Kconfig 检测到递归依赖：
+**根因**：本包 `Makefile` 显式写了 `PKG_NAME:=luci-app-netmonitor`。
+
+luci feed 的其余 luci 包都不设 `PKG_NAME`，而是依赖 `luci.mk` 的推导：
+
+```makefile
+LUCI_NAME?=$(notdir ${CURDIR})
+PKG_NAME?=$(LUCI_NAME)
+```
+
+在 OpenWrt 的批量包元数据扫描中，本包先被解析并把 `PKG_NAME` 固定为
+`luci-app-netmonitor`；后续 luci 包因为使用 `?=` 不再重新求值，于是整批 **146 个包
+全部被写成同一个包名**。`tmp/.packageinfo` 里可直接看到"依赖各不相同、包名却相同"
+的错位：
 
 ```
-tmp/.config-package.in:47303:error: recursive dependency detected!
-	symbol PACKAGE_luci-app-netmonitor depends on PACKAGE_rpcd
-Config-build.in:6189:	symbol PACKAGE_rpcd is selected by PACKAGE_attendedsysupgrade-common
-tmp/.config-package.in:31:	symbol PACKAGE_attendedsysupgrade-common is selected by PACKAGE_luci-app-netmonitor
+35554:Package: luci-app-netmonitor
+35555-Submenu: 1. Collections
+35557-Depends: +libc +luci-light +luci-app-package-manager   # 实为 luci 元包
+--
+35577:Package: luci-app-netmonitor
+35578-Submenu: 3. Applications
+35580-Depends: +libc +luci-base                              # 实为某个 luci 应用
 ```
 
-`conf` 工具报错后**不产出可用的 `.config`**，而 `package/<name>/compile` 这类目标是
-由 `tmp/.packageinfo` 动态生成的，该索引又依赖 `.config`。`.config` 缺失/不完整
-（`CONFIG_TARGET_*` 为空）时，包索引为空，于是 `compile` 目标根本不存在——错误信息
+由此生成的 Kconfig 中同一 symbol 被反复定义，直接产生自依赖：
+
+```
+tmp/.config-package.in:11410:error: recursive dependency detected!
+	symbol PACKAGE_luci-app-netmonitor depends on PACKAGE_luci-app-netmonitor
+```
+
+跨包依赖被压缩到同一个 symbol 上，还会派生出看似毫不相关的假环——早期版本报的
+`depends on PACKAGE_rpcd`、`attendedsysupgrade-common` 循环即由此而来，并非本包
+真的依赖这些组件。
+
+`conf` 工具报错后**不产出可用的 `.config`**，而 `package/<name>/compile` 这类目标由
+`tmp/.packageinfo` 动态生成、该索引又依赖 `.config`，于是目标整体消失——错误信息
 指向 target 缺失，而非真正的 Kconfig 失败。
 
-`attendedsysupgrade-common` 是 SDK 环境的构建期组件（来自 packages feed），与本包无任何
-关系；环成立只是因为本包又显式声明了 `+rpcd`，并同时把 packages feed 拉了进来。
+**修法**：
 
-**修法（三层）**：
-
-1. `Makefile` 中不再显式声明 `+rpcd` / `+rpcd-mod-ucode` / `+ucode`。
-   `luci-base` 的 `LUCI_DEPENDS` 已包含这三项（实机 `apk info -R luci-base` 可直接验到），
-   语义无损，而环中属于本包的那条边随之消失。
-2. `.github/workflows/build.yml` 只安装 luci feed：`./scripts/feeds install -a -p luci`，
-   不再全量 `install -a`。`attendedsysupgrade-common` 由 packages feed 提供，
-   去掉该 feed 后这个组件根本不进入 Kconfig，环的另一端不存在。
-3. Configure 步骤保留自愈：检出 `recursive dependency detected` 时清理 `tmp/` 下
+1. `Makefile` 不再显式设置 `PKG_NAME`，交由 `luci.mk` 依据目录名推导；同时不再显式
+   设置 `LUCI_PKGARCH`（默认值即 `all`），并把内部变量 `LUCI_MK` 改名为
+   `NETMONITOR_LUCI_MK`，避免与批次内其它包的同名变量互相干扰。
+2. 依赖中不再重复声明 `+rpcd` / `+rpcd-mod-ucode` / `+ucode`：`luci-base` 的
+   `LUCI_DEPENDS` 已包含这三项（实机 `apk info -R luci-base` 可直接验到）。
+3. `.github/workflows/build.yml` 只安装 luci feed：`./scripts/feeds install -a -p luci`，
+   不再全量 `install -a`。
+4. Configure 步骤保留自愈：检出 `recursive dependency detected` 时清理 `tmp/` 下
    可再生的索引并重跑一次，同时打印 `.packageinfo` 与生成的 Kconfig 片段便于定位。
 
 **关键约束：绝不能删除 `Config-build.in`**。它属于 Kconfig 输入（不是 `tmp/` 下的
@@ -676,7 +699,8 @@ tmp/.config-package.in:31:	symbol PACKAGE_attendedsysupgrade-common is selected 
 Config.in:153: glob failed: No files found "Config-build.in"
 ```
 
-**判据**：构建日志中 `target symbols:` 必须非 0，`tmp/.packageinfo` 必须存在。
+**判据**：`.packageinfo` 中 `grep -c '^Package: luci-app-netmonitor$'` 必须为 1，
+`target symbols:` 必须非 0。
 
 ---
 

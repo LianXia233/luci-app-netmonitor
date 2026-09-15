@@ -7,7 +7,19 @@
 
 include $(TOPDIR)/rules.mk
 
-PKG_NAME:=luci-app-netmonitor
+# 重要：这里刻意不设置 PKG_NAME。
+#
+# 本包目录名即 luci-app-netmonitor，luci.mk 会自动推导出同名包：
+#     LUCI_NAME?=$(notdir ${CURDIR})
+#     PKG_NAME?=$(LUCI_NAME)
+#
+# 若在此显式写 `PKG_NAME:=luci-app-netmonitor`，会在 OpenWrt 的批量包元数据
+# 扫描阶段把该值残留给同一批次解析的其它 luci 包（它们都用 ?= 推导，不会覆盖）。
+# 后果是 tmp/.packageinfo 中出现上百条同名条目、多个包共用同一个 Kconfig symbol：
+#     tmp/.config-package.in:11410:error: recursive dependency detected!
+#         symbol PACKAGE_luci-app-netmonitor depends on PACKAGE_luci-app-netmonitor
+# 并进一步派生出跨包的假环（例如 rpcd / attendedsysupgrade-common），
+# 使 `make defconfig` 无法收敛、package/<name>/compile 目标消失。
 PKG_VERSION:=1.0.0
 PKG_RELEASE:=1
 PKG_LICENSE:=GPL-2.0-or-later
@@ -21,7 +33,11 @@ LUCI_DESCRIPTION:=Continuous ICMP latency / packet loss / connectivity monitorin
 	long term aggregation on flash, and provides a responsive LuCI dashboard \
 	(overview, realtime, charts, regions, history, targets, settings) built on \
 	native LuCI JS, HTML5, CSS3 and inline SVG.
-LUCI_PKGARCH:=all
+
+# 不显式设置 LUCI_PKGARCH：luci.mk 的默认值为
+#     LUCI_PKGARCH?=$(if $(realpath src/Makefile),,all)
+# 本包没有 src/Makefile，默认值即为 all，与显式赋值完全等价，
+# 但用 ?= 默认值可避免把该变量强行残留给同批次解析的其它 luci 包。
 
 # 依赖全部是 OpenWrt 主线自带组件，不引入任何大型前端框架或数据库。
 #
@@ -41,14 +57,15 @@ LUCI_DEPENDS:= \
 	+ucode-mod-ubus \
 	+ucode-mod-uloop
 
-# 兼容三种常见布局：源码树内 feeds/luci、SDK、以及独立仓库放到 package/ 下
-LUCI_MK:=$(firstword $(wildcard \
+# 兼容三种常见布局：源码树内 feeds/luci、SDK、以及独立仓库放到 package/ 下。
+# 变量名加 NETMONITOR_ 前缀，避免与 luci.mk / feeds 中的同名变量相互干扰。
+NETMONITOR_LUCI_MK:=$(firstword $(wildcard \
 	$(TOPDIR)/feeds/luci/luci.mk \
 	$(TOPDIR)/package/feeds/luci/luci.mk \
 	$(TOPDIR)/../feeds/luci/luci.mk))
 
-ifeq ($(LUCI_MK),)
+ifeq ($(NETMONITOR_LUCI_MK),)
 $(error Cannot locate luci.mk - please build this package inside an OpenWrt source tree with the LuCI feed installed)
 endif
 
-include $(LUCI_MK)
+include $(NETMONITOR_LUCI_MK)
