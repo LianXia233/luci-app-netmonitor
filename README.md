@@ -1,10 +1,45 @@
 # luci-app-netmonitor（网络质量监控）
 
+[![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.2.0-informational.svg)](CHANGELOG.md)
+[![OpenWrt](https://img.shields.io/badge/OpenWrt-23.05%20%7C%2024.10%20%7C%2025.x-00A0D0.svg)](https://openwrt.org)
+[![LuCI](https://img.shields.io/badge/LuCI-JS%20view%20%2B%20ucode%20RPC-FF6B35.svg)](https://github.com/openwrt/luci)
+[![Package arch](https://img.shields.io/badge/arch-all%20%28PKGARCH%3Dall%29-lightgrey.svg)](#52-安装到设备)
+[![Build](https://github.com/LianXia233/luci-app-netmonitor/actions/workflows/build.yml/badge.svg)](https://github.com/LianXia233/luci-app-netmonitor/actions/workflows/build.yml)
+[![Tests](https://img.shields.io/badge/tests-536%20assertions%20passing-2e9e5b.svg)](#十一测试清单)
+[![i18n](https://img.shields.io/badge/i18n-zh__Hans%20%2B%20en%2C%200%20untranslated-2e9e5b.svg)](#十一测试清单)
+[![Last commit](https://img.shields.io/github/last-commit/LianXia233/luci-app-netmonitor/main.svg)](https://github.com/LianXia233/luci-app-netmonitor/commits/main)
+[![Code size](https://img.shields.io/github/languages/code-size/LianXia233/luci-app-netmonitor.svg)](https://github.com/LianXia233/luci-app-netmonitor)
+
 面向 **OpenWrt 主线（upstream / mainline）** 的网络延迟与网络联通性监控插件。
 后台由 `procd` 托管一个常驻探测守护进程，LuCI 页面只负责读取状态与曲线，
 **关闭浏览器页面后监控依然持续运行**。
 
 菜单位置：**状态 → 网络质量监控（Network Monitor）**
+
+---
+
+## 目录
+
+- [一、设计原则](#一设计原则)
+- [二、主要特性](#二主要特性)
+- [三、架构](#三架构)
+- [四、目录结构](#四目录结构)
+- [五、编译与安装](#五编译与安装)
+- [六、UCI 配置说明](#六uci-配置说明etcconfignetmonitor)
+- [七、RPC 接口](#七rpc-接口ubus-对象-lucinetmonitor)
+- [八、数据存储与 Flash 保护](#八数据存储与-flash-保护)
+- [九、卸载](#九卸载)
+- [十、调试方法](#十调试方法)
+- [十一、测试清单](#十一测试清单)
+- [十二、开发约定与踩坑记录](#十二开发约定与踩坑记录)
+- [十三、兼容性](#十三兼容性)
+- [十四、动态 SVG 图标与动画系统](#十四动态-svg-图标与动画系统)
+- [十五、已知限制](#十五已知限制)
+- [十六、版本与更新日志](#十六版本与更新日志)
+- [十七、许可证](#十七许可证)
+
+> 版本变更记录不在本文件维护，统一见 [`CHANGELOG.md`](CHANGELOG.md)。
 
 ---
 
@@ -120,7 +155,9 @@ make menuconfig            # LuCI → Applications → luci-app-netmonitor
 make package/luci-app-netmonitor/compile V=s
 ```
 
-产物：`bin/packages/*/luci/luci-app-netmonitor_1.0.0-r1_all.ipk`
+产物：`bin/packages/*/luci/luci-app-netmonitor_1.2.0-r1_all.ipk`
+（版本号取自 `Makefile` 的 `PKG_VERSION` / `PKG_RELEASE`；源码树放在 feeds 里构建时，
+产物名中的版本可能带 LuCI 的日期后缀，以实际输出为准）
 
 ### 5.2 安装到设备
 
@@ -130,21 +167,21 @@ make package/luci-app-netmonitor/compile V=s
 
 ```bash
 opkg update
-opkg install luci-app-netmonitor luci-i18n-netmonitor-zh_Hans
+opkg install luci-app-netmonitor luci-i18n-netmonitor-zh-cn
 ```
 
 **apk（OpenWrt 25.x 及更新版本）**
 
 ```bash
 apk update
-apk add luci-app-netmonitor luci-i18n-netmonitor-zh_Hans
+apk add luci-app-netmonitor luci-i18n-netmonitor-zh-cn
 ```
 
 **离线安装**（从构建机拷贝产物）
 
 ```bash
-scp luci-app-netmonitor_*.ipk luci-i18n-netmonitor-zh_Hans_*.ipk root@192.168.1.1:/tmp/
-ssh root@192.168.1.1 "opkg install /tmp/luci-app-netmonitor_*.ipk /tmp/luci-i18n-netmonitor-zh_Hans_*.ipk"
+scp luci-app-netmonitor_*.ipk luci-i18n-netmonitor-zh-cn_*.ipk root@192.168.1.1:/tmp/
+ssh root@192.168.1.1 "opkg install /tmp/luci-app-netmonitor_*.ipk /tmp/luci-i18n-netmonitor-zh-cn_*.ipk"
 ```
 
 **签名校验失败**（自编译包未签名，opkg 报 `Signature check failed`）：
@@ -229,7 +266,7 @@ logread | grep -i rpcd               # RPC 后端加载失败原因
 **卸载后复核**
 
 ```bash
-opkg remove luci-app-netmonitor luci-i18n-netmonitor-zh_Hans
+opkg remove luci-app-netmonitor luci-i18n-netmonitor-zh-cn
 /etc/init.d/rpcd restart
 ubus list | grep netmonitor          # 应无输出
 ```
@@ -266,7 +303,7 @@ rpcd  rpcd-mod-file  rpcd-mod-luci  rpcd-mod-ucode  cgi-io  ucode
 | `timeout` | `3` | Ping 超时（秒），1–30 |
 | `count` | `1` | 每次检测的发包数，1–20 |
 | `concurrency` | `5` | 并发检测目标数上限，1–50 |
-| `address_family` | `auto` | `auto` / `ipv4` / `ipv6` / `both` |
+| `address_family` | `auto` | 全局默认地址族：`auto` / `ipv4` / `ipv6`。目标级 `family` 可覆盖，**且目标级多一个 `both`**（IPv4 + IPv6 双栈，见 6.2） |
 | `default_proto` | `icmp` | 默认探测方式：`icmp`（ICMP echo）/ `tcp`（TCP 连接握手） |
 | `default_tcp_port` | `80` | TCP 探测的默认端口（1–65535），供未单独指定 `tcp_port` 的目标使用 |
 | `interface` | 空 | 出口接口（如 `wan`、`wwan`），空则走系统默认路由 |
@@ -295,7 +332,7 @@ config target 'baidu'
 	option label    ''            # 自定义标签，如 香港 / 日本 / DNS / 游戏
 	option proto    'icmp'        # icmp | tcp
 	option tcp_port '0'           # TCP 端口；0 = 跟随全局 default_tcp_port
-	option family   'auto'        # auto | ipv4 | ipv6 | both
+	option family   'auto'        # auto | ipv4 | ipv6 | both（both 仅目标级可用）
 	option interval '0'           # 0 = 跟随全局
 	option timeout  '3'           # 0 = 跟随全局
 	option interface ''
@@ -306,6 +343,10 @@ config target 'baidu'
 
 默认配置提供 4 个示例目标（百度、阿里 DNS、Cloudflare、Google DNS），
 其中百度默认启用、另外 3 个默认禁用，**可任意修改或删除**。
+
+> 表格、弹窗与设置页的可选项集合都以源码为准：全局 `address_family` 三选一
+> （`auto`/`ipv4`/`ipv6`），目标级 `family` 四选一（多一个 `both`）。
+> 后端 `FAMILIES` 常量虽然同时接受四个值，但全局设置页不下发 `both`。
 
 #### 6.2.1 ICMP 与 TCP 两种探测方式
 
@@ -457,7 +498,7 @@ ubus call luci.netmonitor get_status '{"spark":true}' | head -c 800
 | 目标一直 DNS 解析失败 | 检查路由器 DNS 配置；域名是否被劫持；可先换成 IP 测试 |
 | 改动配置不生效 | procd 会监听 `/etc/config/netmonitor`，若未触发可手动 `/etc/init.d/netmonitor reload` |
 | 页面样式异常 | 确认 CSS 已加载（浏览器开发工具搜索 `.nm-root`）；本页面样式全部在 `.nm-` 命名空间内，不会与其它主题冲突 |
-| 中文未生效 | 确认已安装 `luci-i18n-netmonitor-zh-cn` 或编译时选中 Languange 中的 Chinese；必要时在 LuCI 中切换语言 |
+| 中文未生效 | 确认已安装 `luci-i18n-netmonitor-zh-cn`（注意包名是别名 `zh-cn`，源码目录才是 `po/zh_Hans`，见 12.11），或编译时在 LuCI → Translations 中选中 Chinese；必要时在 LuCI 中重新切换语言 |
 | 服务反复重启 | 查看 `logread`，通常为配置非法（如 host 含空格）导致；修正后 `restart` |
 
 ---
@@ -1386,7 +1427,40 @@ python3 nm_svg_verify.py
 
 ---
 
-## 十六、许可证
+## 十六、版本与更新日志
+
+**本文件不再维护任何形式的版本变更记录。** 所有版本变更的唯一归口是
+[`CHANGELOG.md`](CHANGELOG.md)，格式遵循
+[Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
+版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
+
+| 位置 | 职责 |
+| --- | --- |
+| `CHANGELOG.md` | **唯一的**版本变更记录：新增 / 变更 / 修复三类条目，按版本倒序排列 |
+| `README.md`（本文件） | 只描述**当前版本**的稳定行为：设计原则、架构、配置、RPC、调试与开发约束 |
+| 第十二章 | 踩坑记录按**技术主题**组织，不按版本组织；条目本身就是当前仍生效的硬约束 |
+
+这样切分的理由：
+
+1. 第十二章的每一条都是**至今仍生效的约束**，不是「某版本改过什么」；
+   把它放在 README 里，读者才能和对应的代码放在一起看。
+2. 版本历史留在 README 里会随版本线性膨胀，最终挤掉使用文档本身 ——
+   本项目 README 已逾 1400 行，这个风险是真实存在的。
+3. `CHANGELOG.md` 末尾的链接引用块直接指向各版本的 `compare` 链接，
+   需要逐行 diff 时可从那里跳转。
+
+```bash
+git log --oneline                    # 提交历史
+git tag -l                           # 已发布版本：v1.0.0 / v1.0.1 / v1.1.0 / v1.2.0
+git diff v1.1.0..v1.2.0              # 两个版本之间的完整改动
+```
+
+版本号与 `Makefile` 的一致性由发布流程保证：`PKG_VERSION` 必须与 `CHANGELOG.md`
+最新条目的版本号、以及 git tag `v<版本>` 三者相同。
+
+---
+
+## 十七、许可证
 
 GPL-3.0-or-later，`LICENSE` 为 GPLv3 完整官方文本。
 
@@ -1394,5 +1468,6 @@ Copyright (C) 2026 netmonitor contributors
 
 本包沿用 LuCI 生态惯例，以 SPDX 标识 `GPL-3.0-or-later` 声明在 `Makefile` 的
 `PKG_LICENSE` 中；原 1.1.0 及更早版本发布于 GPL-2.0-or-later，该许可证本身即允许
-按 GPLv3 使用。各版本变更见 `CHANGELOG.md`。
+按 GPLv3 使用。各版本变更见 [`CHANGELOG.md`](CHANGELOG.md)。
+
 
