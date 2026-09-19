@@ -4,14 +4,14 @@
 
 **面向 OpenWrt 主线（Mainline）的高性能网络延迟与连通性实时监控系统**
 
-[![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.2.0-informational.svg)](CHANGELOG.md)
-[![OpenWrt](https://img.shields.io/badge/OpenWrt-23.05%20%7C%2024.10%20%7C%2025.x-00A0D0.svg?logo=openwrt&logoColor=white)](#十三兼容性)
-[![LuCI Architecture](https://img.shields.io/badge/LuCI-JS%20View%20%2B%20ucode%20RPC-FF6B35.svg)](#三系统架构)
-[![Package arch](https://img.shields.io/badge/arch-all%20(PKGARCH%3Dall)-lightgrey.svg)](#五编译与安装)
-[![Build](https://github.com/LianXia233/luci-app-netmonitor/actions/workflows/build.yml/badge.svg)](https://github.com/LianXia233/luci-app-netmonitor/actions/workflows/build.yml)
-[![Tests](https://img.shields.io/badge/tests-536%20passing-2e9e5b.svg)](#十一测试与断言规范)
-[![i18n](https://img.shields.io/badge/i18n-zh__Hans%20%7C%20en%20(100%25)-2e9e5b.svg)](#十二开发约定与踩坑记录)
+[![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg?style=flat-square)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.2.0-informational.svg?style=flat-square)](CHANGELOG.md)
+[![OpenWrt](https://img.shields.io/badge/OpenWrt-23.05%20%7C%2024.10%20%7C%2025.x-00A0D0.svg?logo=openwrt&logoColor=white&style=flat-square)](#-系统与版本兼容性)
+[![LuCI Architecture](https://img.shields.io/badge/LuCI-JS%20View%20%2B%20ucode%20RPC-FF6B35.svg?style=flat-square)](#-系统架构)
+[![Package arch](https://img.shields.io/badge/arch-all%20(PKGARCH%3Dall)-lightgrey.svg?style=flat-square)](#-快速安装与验证)
+[![Build](https://github.com/LianXia233/luci-app-netmonitor/actions/workflows/build.yml/badge.svg?style=flat-square)](https://github.com/LianXia233/luci-app-netmonitor/actions/workflows/build.yml)
+[![Tests](https://img.shields.io/badge/tests-536%20passing-2e9e5b.svg?style=flat-square)](#-测试与断言规范)
+[![i18n](https://img.shields.io/badge/i18n-zh__Hans%20%7C%20en%20(100%25)-2e9e5b.svg?style=flat-square)](#-关键开发约定与工业级避坑指南)
 
 *基于 procd 常驻守护进程与轻量 tmpfs 直方图存储 · 关闭网页后台持续采样 · 拒绝虚假 0ms 延迟*
 
@@ -35,7 +35,7 @@
 ```mermaid
 graph TD
     subgraph Frontend [LuCI 现代前端视图]
-        UI[HTML5 + CSS3 + 原生 ES6 + 自研 SVG 引擎]
+        UI["HTML5 + CSS3 + 原生 ES6 + 自研 SVG 引擎"]
     end
 
     subgraph Middleware [ubus / rpcd 鉴权中枢]
@@ -43,9 +43,9 @@ graph TD
     end
 
     subgraph Daemon [procd 守护服务栈]
-        PROCD[procd 进程守护 / 崩溃自愈] --> SCRIPT["/usr/libexec/netmonitor/netmon-daemon.sh"]
-        SCRIPT -->|ICMP Echo| PING[busybox ping / ping6]
-        SCRIPT -->|TCP Handshake| CURL[curl --connect-timeout]
+        PROCD["procd 进程守护 / 崩溃自愈"] --> SCRIPT["/usr/libexec/netmonitor/netmon-daemon.sh"]
+        SCRIPT -->|"ICMP Echo"| PING["busybox ping / ping6"]
+        SCRIPT -->|"TCP Handshake"| CURL["curl --connect-timeout"]
     end
 
     subgraph Storage [数据持久层]
@@ -53,12 +53,11 @@ graph TD
         FLASH[("/etc/netmonitor/history/*.agg (可选 Flash 聚合桶)")]
     end
 
-    UI <-->|ubus call 异步轮询| UCODE
-    UCODE <-->|读取状态 / 发送信号| TMPFS
-    UCODE -->|持久化回溯| FLASH
-    SCRIPT -->|高频 O(1) 增量更新| TMPFS
-    SCRIPT -.->|按周期定额写入| FLASH
-
+    UI <-->|"ubus call 异步轮询"| UCODE
+    UCODE <-->|"读取状态 / 发送信号"| TMPFS
+    UCODE -->|"持久化回溯"| FLASH
+    SCRIPT -->|"高频 O(1) 增量更新"| TMPFS
+    SCRIPT -.->|"按周期定额写入"| FLASH
 ```
 
 > [!NOTE]
@@ -66,11 +65,22 @@ graph TD
 
 ---
 
+## 💻 系统与版本兼容性
+
+| OpenWrt 发行版 / 分支 | 包管理工具 | 核心依赖状态 | 架构支持 |
+| --- | --- | --- | --- |
+| **OpenWrt 25.x / SNAPSHOT** | `apk` | `ucode`, `rpcd-mod-ucode`, `curl` | 全部 (`PKGARCH=all`) |
+| **OpenWrt 24.10** | `opkg` | `ucode`, `rpcd-mod-ucode`, `curl` | 全部 (`PKGARCH=all`) |
+| **OpenWrt 23.05** | `opkg` | `ucode`, `rpcd-mod-ucode`, `curl` | 全部 (`PKGARCH=all`) |
+| **ImmortalWrt 23.05+** | `opkg` / `apk` | 同上 | 全部 (`PKGARCH=all`) |
+
+---
+
 ## ⚡ 快速安装与验证
 
-插件架构属性为 `PKGARCH=all`，单份构建制品兼容全部目标芯片架构。
+插件包架构为 `PKGARCH=all`，单份构建制品全架构通用（x86_64、aarch64、mips 等芯片均可直接安装）。
 
-### 1. 包管理器快速部署
+### 1. 包管理器部署
 
 #### apk 系统（OpenWrt 25.x / ImmortalWrt SNAPSHOT）
 
@@ -78,8 +88,8 @@ graph TD
 apk update
 apk add luci-app-netmonitor luci-i18n-netmonitor-zh-cn
 
-# 离线部署指令：apk add --allow-untrusted luci-app-netmonitor_*.apk
-
+# 离线本地安装：
+# apk add --allow-untrusted luci-app-netmonitor_*.apk
 ```
 
 #### opkg 系统（OpenWrt 23.05 / 24.10）
@@ -88,13 +98,13 @@ apk add luci-app-netmonitor luci-i18n-netmonitor-zh-cn
 opkg update
 opkg install luci-app-netmonitor luci-i18n-netmonitor-zh-cn
 
-# 离线降级/强制覆盖：opkg install --force-downgrade --force-depends luci-app-netmonitor_*.ipk
-
+# 离线本地安装：
+# opkg install --force-downgrade --force-depends luci-app-netmonitor_*.ipk
 ```
 
 ### 2. 服务启动与初始化
 
-安装完成后，必须重载 RPC 缓存与服务以注册菜单：
+安装完成后，刷新 LuCI 缓存与 RPC 服务注册路由：
 
 ```bash
 # 刷新 LuCI 路由缓存与 RPC 权限
@@ -105,7 +115,6 @@ rm -f /tmp/luci-indexcache*
 # 启用并拉起守护进程
 /etc/init.d/netmonitor enable
 /etc/init.d/netmonitor start
-
 ```
 
 菜单入口位于：**状态（Status） → 网络质量监控（Network Monitor）**
@@ -113,16 +122,15 @@ rm -f /tmp/luci-indexcache*
 ### 3. 实机状态核验
 
 ```bash
-# 1. 验证进程常驻
+# 1. 验证后台检测进程常驻
 pgrep -f netmon-daemon
 
-# 2. 验证 ubus RPC 对象导出
+# 2. 验证 ubus RPC 命名空间注册
 ubus list | grep luci.netmonitor
 
-# 3. 检查心跳与实时监控链路（tick 应随检测递增）
+# 3. 检查心跳与实时指标链路（tick 随检测周期自增）
 ubus call luci.netmonitor service_status
 ubus call luci.netmonitor get_status
-
 ```
 
 ---
@@ -133,27 +141,27 @@ ubus call luci.netmonitor get_status
 
 | 参数项 | 默认值 | 约束范围 | 说明 |
 | --- | --- | --- | --- |
-| `enabled` | `1` | `0` | `1` | 监控总开关 |
-| `interval` | `10` | `1 - 3600` (s) | 全局默认探测轮询间隔 |
+| `enabled` | `1` | `0` \| `1` | 监控总开关 |
+| `interval` | `10` | `1 - 3600` (s) | 全局探测轮询间隔 |
 | `timeout` | `3` | `1 - 30` (s) | 单次检测超时阈值 |
 | `concurrency` | `5` | `1 - 50` | 并发执行探测的任务上限 |
-| `address_family` | `auto` | `auto` | `ipv4` | `ipv6` | 全局地址族路由偏好 |
-| `default_proto` | `icmp` | `icmp` | `tcp` | 默认探测链路方式 |
+| `address_family` | `auto` | `auto` \| `ipv4` \| `ipv6` | 全局地址族路由偏好 |
+| `default_proto` | `icmp` | `icmp` \| `tcp` | 默认探测链路方式 |
 | `default_tcp_port` | `80` | `1 - 65535` | TCP 探测未指明端口时的回退端口 |
-| `persistence` | `0` | `0` | `1` | Flash 聚合历史记录持久化（默认关闭保护闪存） |
-| `history` | `24h` | `1h` ~ `30d` | 持久化数据生命周期保留范围 |
-| `persist_interval` | `300` | `60 - 3600` (s) | 聚合指标刷盘到 Flash 的时间周期 |
-| `max_points` | `4320` | `100 - 86400` | 内存环形缓存深度（4320 点 @ 10s $\approx$ 12小时） |
+| `persistence` | `0` | `0` \| `1` | Flash 聚合历史记录持久化（默认关闭以保护闪存） |
+| `history` | `24h` | `1h` ~ `30d` | 持久化数据保留周期 |
+| `persist_interval` | `300` | `60 - 3600` (s) | 聚合指标落盘 Flash 的周期 |
+| `max_points` | `4320` | `100 - 86400` | 内存环形缓存深度（4320 点 @ 10s $\approx$ 12 小时） |
 | `ui_refresh` | `2` | `1 - 60` (s) | Web 前端自动轮询状态的刷新周期 |
-| `fail_warn` / `fail_critical` | `3` / `5` | 正整数 | 连续失败触发告警 / 严重的次数阈值 |
-| `latency_excellent` ~ `poor` | `50`/`100`/`200`/`500` | ms | 延迟评级区间阈值（优秀/良好/一般/较差） |
+| `fail_warn` / `fail_critical` | `3` / `5` | 正整数 | 连续失败触发告警 / 严重告警的阈值 |
+| `latency_excellent` ~ `poor` | `50`/`100`/`200`/`500` | 毫秒 (ms) | 延迟评级区间阈值（优秀/良好/一般/较差） |
 
 ### 2. 目标配置段 (`config target`)
 
 ```uci
 config target 'baidu'
     option name      'Baidu'
-    option host      '[www.baidu.com](https://www.baidu.com)'
+    option host      'www.baidu.com'
     option region    'cn'          # 区域归类: cn | overseas | other
     option label     '搜索服务'     # 自定义标签
     option proto     'icmp'        # 探测方式: icmp | tcp
@@ -161,11 +169,10 @@ config target 'baidu'
     option family    'auto'        # auto | ipv4 | ipv6 | both (目标级支持 both 双栈)
     option interval  '0'           # 局部覆盖: 0 表示继承全局
     option timeout   '3'           # 局部覆盖: 超时时长
-    option interface ''            # 绑定流出网卡 (如 wan, wwan)
+    option interface ''            # 绑定出口网卡 (如 wan, wwan)
     option source    ''            # 绑定源 IP 地址
     option enabled   '1'           # 启停开关
     option remark    '核心业务检测'
-
 ```
 
 ---
@@ -177,25 +184,25 @@ config target 'baidu'
 | **原始采样点** | `/tmp/netmonitor/ring/<id>.tsv` | tmpfs (RAM) | 每次探测追加单行，超出 `max_points` 循环覆盖 |
 | **流式统计段** | `/tmp/netmonitor/hist/<id>.{cur,seg}` | tmpfs (RAM) | 每轮检测原地更新，仅保留 60 周期分段与 17 桶直方图 |
 | **状态快照** | `/tmp/netmonitor/state/<id>` | tmpfs (RAM) | 极小文本，仅记录即时状态、错误码与连续计数 |
-| **聚合历史桶** | `/etc/netmonitor/history/<id>.agg` | Flash 闪存 | 仅在 `persistence=1` 时，每隔 `persist_interval` 秒定额追加一个时间窗的平均值 |
+| **聚合历史桶** | `/etc/netmonitor/history/<id>.agg` | Flash (ROM) | 仅在 `persistence=1` 时，每隔 `persist_interval` 秒定额追加时序均值 |
 
 > [!TIP]
-> **算法复杂度保障**：P50 / P95 / P99 分位数采用直方图内插估算，单轮计算复杂度为严格的 $O(1)$，即使开启长周期监控亦绝不造成 CPU 负载随时间劣化。
+> **算法复杂度保障**：P50 / P95 / P99 分位数采用直方图内插估算，单轮计算复杂度为严格的 $O(1)$，即便开启长周期连续监控，CPU 计算开销也绝不随时间推移而劣化。
 
 ---
 
 ## 📡 RPC 接口定义 (`luci.netmonitor`)
 
-| 接口方法 | 鉴权模式 | 签名载荷要求 | 核心语义说明 |
+| 接口方法 | 鉴权 | 签名载荷要求 | 核心语义说明 |
 | --- | --- | --- | --- |
-| `get_status` | read | `{ spark: bool }` | 获取全景运行态、各目标状态、区域聚合及迷你趋势图 |
-| `get_statistics` | read | `{ range: "1h" | "24h" ... }` | 查询指定范围的汇总统计指标（极值、百分位、丢包率） |
-| `get_history` | read | `{ range: string, target: string }` | 读取平滑降采样后的历史曲线时序点阵 |
-| `set_config` | write | `{ values: "..." }` | 严格基于白名单与类型范围写入全局配置 |
-| `add_target` | write | `{ target: "..." }` | 声明并校验新增监测目标 |
-| `update_target` | write | `{ id: string, target: "..." }` | 更新目标参数（支持协议与端口动态变更） |
-| `delete_target` | write | `{ id: string }` | 移除目标及其内存关联数据文件 |
-| `service_status` | read | `{}` | 查询底层 procd 服务及心跳 `tick` 活跃度 |
+| `get_status` | read | `{ "spark": bool }` | 获取全景运行态、各目标状态、区域聚合及迷你趋势图 |
+| `get_statistics` | read | `{ "range": "1h" \| "24h" ... }` | 查询指定范围的汇总统计指标（极值、百分位、丢包率） |
+| `get_history` | read | `{ "range": string, "target": string }` | 读取平滑降采样后的历史曲线时序点阵 |
+| `set_config` | write | `{ "values": "..." }` | 严格基于白名单与类型范围写入全局配置 |
+| `add_target` | write | `{ "target": "..." }` | 声明并校验新增监测目标 |
+| `update_target` | write | `{ "id": string, "target": "..." }` | 更新目标参数（支持协议与端口动态变更） |
+| `delete_target` | write | `{ "id": string }` | 移除目标及其内存关联数据文件 |
+| `service_status` | read | `{}` | 查询底层 procd 服务运行态及心跳 `tick` 活跃度 |
 
 ---
 
@@ -204,50 +211,48 @@ config target 'baidu'
 ### 1. 源码编译 (OpenWrt SDK)
 
 ```bash
-# 1. 引入应用源码至 SDK 源码树
+# 1. 引入应用源码至 SDK package 目录
 cp -r luci-app-netmonitor <sdk>/package/
 ./scripts/feeds update -a && ./scripts/feeds install -a
 
-# 2. 选中并编译
-make menuconfig # LuCI -> Applications -> luci-app-netmonitor
+# 2. 配置并编译
+make menuconfig # 路径: LuCI -> Applications -> luci-app-netmonitor
 make package/luci-app-netmonitor/compile V=s
-
 ```
 
 ### 2. 核心源码拓扑
 
 ```text
 luci-app-netmonitor/
-├── Makefile                                       # 遵循主线规范的包构建定义
-├── .github/workflows/build.yml                    # 静态审计 + 单元测试 + 构建流水线
-├── po/                                            # 本地化多语言字典
-│   ├── core_msgids.txt                            # 与核心语言包同名的 msgid 规范清单
-│   ├── gen_po.py                                  # 跨平台 AST 翻译提取与冲突检测工具
+├── Makefile                                        # 遵循主线规范的包构建定义
+├── .github/workflows/build.yml                     # 静态审计 + 单元测试 + 构建流水线
+├── po/                                             # 本地化多语言字典
+│   ├── core_msgids.txt                             # 与核心语言包同名的 msgid 规范清单
+│   ├── gen_po.py                                   # 跨平台 AST 翻译提取与冲突检测工具
 │   └── zh_Hans/luci-app-netmonitor.po
-├── tests/                                         # 自动化断言测试套件
-│   ├── test_netmon_daemon.sh                      # 守护进程核心算法单元测试 (94 assertions)
-│   └── test_icons.js                              # SVG 动态图标与渲染断言 (442 assertions)
-├── root/                                          # 系统根预置资产
+├── tests/                                          # 自动化断言测试套件
+│   ├── test_netmon_daemon.sh                       # 守护进程核心算法单元测试 (94 assertions)
+│   └── test_icons.js                               # SVG 动态图标与渲染断言 (442 assertions)
+├── root/                                           # 系统根预置资产
 │   ├── etc/
-│   │   ├── init.d/netmonitor                      # procd 进程托管脚本
-│   │   └── uci-defaults/luci-app-netmonitor       # 首次初始化脚本
+│   │   ├── init.d/netmonitor                       # procd 进程托管脚本
+│   │   └── uci-defaults/luci-app-netmonitor        # 首次安装初始化脚本
 │   └── usr/
-│       ├── libexec/netmonitor/netmon-daemon.sh    # 高并发检测核心引擎
+│       ├── libexec/netmonitor/netmon-daemon.sh     # 高并发检测核心引擎
 │       └── share/
-│           ├── luci/menu.d/                       # LuCI 菜单路由定义
+│           ├── luci/menu.d/                        # LuCI 菜单路由定义
 │           └── rpcd/
-│               ├── acl.d/                         # ACL 权限访问控制规范
-│               └── ucode/luci.netmonitor          # ucode 高性能 RPC 服务端
+│               ├── acl.d/                          # ACL 权限访问控制清单
+│               └── ucode/luci.netmonitor           # ucode 高性能 RPC 服务端
 └── htdocs/luci-static/resources/
     ├── netmonitor/
-    │   ├── style.css                              # 限定于 .nm- 命名空间的自适应主题样式
-    │   ├── common.js                              # RPC 数据格式化与异常处理中间层
-    │   ├── chart.js                               # 自研轻量级 SVG 时序图表库
-    │   └── icons.js                               # 24 个数据驱动内嵌 SVG 动态矢量图标
-    └── view/netmonitor/                           # 纯客户端渲染单页视图
-        ├── overview.js  realtime.js  charts.js
-        ├── regions.js   history.js   targets.js  settings.js
-
+    │   ├── style.css                               # 限定于 .nm- 命名空间的自适应主题样式
+    │   ├── common.js                               # RPC 数据格式化与异常处理中间层
+    │   ├── chart.js                                # 自研轻量级 SVG 时序图表库
+    │   └── icons.js                                # 24 个数据驱动内嵌 SVG 动态矢量图标
+    └── view/netmonitor/                            # 纯客户端渲染单页视图
+        ├── overview.js   realtime.js   charts.js
+        ├── regions.js    history.js    targets.js  settings.js
 ```
 
 ---
@@ -258,7 +263,7 @@ luci-app-netmonitor/
 
 `rpcd-mod-ucode` 调用 ucode 时，第一个参数恒为 RPC 请求资源句柄，实际请求参数存放在 `request.args` 中。
 
-* **参数类型陷阱**：传入数字或布尔字面量（如 `{"x": 1}`）会导致 RPC 返回 `Invalid argument`。
+* **参数类型陷阱**：直接传入数字或布尔字面量（如 `{"x": 1}`）会导致 RPC 返回 `Invalid argument`。
 * **最佳实践**：前端传输一律序列化为字符串或逗号分隔列表（如 `"id1,id2"`），由后端 `split()` 处理。
 
 ### 2. LuCI 前端模块导出约束
@@ -273,7 +278,7 @@ LuCI 模块加载器强制执行类检查（`Class.isSubclass(_class)`），随�
 由于 TAB 字符属于 IFS 空白字符，POSIX shell 下的 `read` 会无条件压缩合并连续的 TAB。
 
 * 若 `iface` 或 `label` 字段留空，后续字段将整体左移，导致 `DNS` 标签被当成 `iface` 传给 ping，进而触发 `bad address` 假异常。
-* **规避方案**：写入空字段时统一填充占位符 `-`，读取后解构还原，确保列宽恒定为 12。
+* **规避方案**：写入空字段时统一填充占位符 `-`，读取后解构还原，确保列宽恒定为 12 列。
 
 ### 4. CI 环境变量 `PKG_NAME` 污染构建矩阵
 
@@ -354,13 +359,12 @@ node tests/test_icons.js
 
 # 3. 运行静态翻译完整性与 AST 代码冲突扫描
 python3 po/gen_po.py --audit
-
 ```
 
 ---
 
 ## ⚖️ 许可证
 
-本项目遵循 [GPL-3.0-or-later](https://www.google.com/search?q=LICENSE&utm_source=gemini) 开源授权协议。
+本项目遵循 [GPL-3.0-or-later](LICENSE) 开源授权协议。
 
 Copyright (C) 2026 netmonitor contributors
