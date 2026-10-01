@@ -228,10 +228,8 @@ return view.extend({
 		if (!Object.prototype.hasOwnProperty.call(cfg, 'default_tcp_port'))
 			cfg.default_tcp_port = '80';
 
-		/* ---------------------------------------------------- 服务控制面板（t-card） */
-		var svcCard = document.createElement('t-card');
-		svcCard.setAttribute('bordered', 'true');
-		svcCard.className = 'nm-svc-panel';
+		/* ---------------------------------------------------- 服务控制面板（TDesign 视觉卡） */
+		var svcCard = common.tcard('nm-svc-panel');
 		var svcRow = common.el('div', 'nm-svc-row-top');
 
 		var svcIcon = common.el('div', 'nm-svc-info');
@@ -309,8 +307,7 @@ return view.extend({
 		page.appendChild(strip);
 
 		function makeStripCard(title, val, subText, svgIcon, valCls) {
-			var card = document.createElement('t-card');
-			card.setAttribute('bordered', 'true');
+			var card = common.tcard();
 			var inner = common.el('div', 'nm-card-inner');
 
 			var head = common.el('div', 'nm-card-header');
@@ -453,9 +450,7 @@ return view.extend({
 		var groups = fieldGroups();
 
 		groups.forEach(function(g) {
-			var card = document.createElement('t-card');
-			card.setAttribute('bordered', 'true');
-			card.className = 'nm-group-card';
+			var card = common.tcard('nm-group-card');
 
 			var head = common.el('div', 'nm-group-header');
 			var ibox = common.el('span', 'nm-group-icon-wrap');
@@ -564,10 +559,8 @@ return view.extend({
 				dirtyTag.innerHTML = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M13.485 1.929a1 1 0 0 1 1.414 1.414L6.343 11.899 1.1 6.657a1 1 0 0 1 1.414-1.414l3.829 3.829 7.142-7.143z" fill="#10b981"/></svg><span>${_('所有修改已生效')}</span>`;
 		}
 
-		/* 动作栏（t-card）：保存 / 放弃 / 状态胶囊 */
-		var actCard = document.createElement('t-card');
-		actCard.setAttribute('bordered', 'true');
-		actCard.className = 'nm-action-bar-glass';
+		/* 动作栏（TDesign 视觉卡）：保存 / 放弃 / 状态胶囊 */
+		var actCard = common.tcard('nm-action-bar-glass');
 
 		btnSave = document.createElement('t-button');
 		btnSave.setAttribute('theme', 'primary');

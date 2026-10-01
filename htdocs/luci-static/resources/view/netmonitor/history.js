@@ -51,9 +51,8 @@ return view.extend({
 		var page = common.el('div', 'nm-page');
 		root.appendChild(page);
 
-		/* 工具栏（t-card） */
-		var bar = document.createElement('t-card');
-		bar.setAttribute('bordered', 'true');
+		/* 工具栏（TDesign 视觉卡） */
+		var bar = common.tcard();
 		var row = common.el('div', 'nm-toolbar-row');
 
 		/* 时间范围 */
@@ -124,10 +123,8 @@ return view.extend({
 		var strip = common.el('div', 'nm-strip-grid');
 		page.appendChild(strip);
 
-		/* 统计详情卡片（t-card + 平面表格） */
-		var statCard = document.createElement('t-card');
-		statCard.setAttribute('bordered', 'true');
-		statCard.className = 'nm-table-panel';
+		/* 统计详情卡片（TDesign 视觉卡 + 平面表格） */
+		var statCard = common.tcard('nm-table-panel');
 		var statTitle = common.el('div', 'nm-panel-title-row');
 		statTitle.appendChild(common.inlineIcon(icons.database(30)));
 		statTitle.appendChild(common.el('div', 'nm-panel-title', _('Statistics')));
@@ -147,9 +144,8 @@ return view.extend({
 		statCard.appendChild(statWrap);
 		page.appendChild(statCard);
 
-		/* 延迟曲线图卡片（t-card） */
-		var chartCard = document.createElement('t-card');
-		chartCard.setAttribute('bordered', 'true');
+		/* 延迟曲线图卡片（TDesign 视觉卡） */
+		var chartCard = common.tcard();
 		var chartTitle = common.el('div', 'nm-panel-title-row');
 		chartTitle.appendChild(common.inlineIcon(icons.trend(30)));
 		chartTitle.appendChild(common.el('div', 'nm-panel-title', _('Latency trend')));
@@ -182,10 +178,9 @@ return view.extend({
 			});
 		}
 
-		/* 指标速览小卡（外层 <t-card>） */
+		/* 指标速览小卡（外层 .nm-tcard） */
 		function makeStripCard(title, val, subText, svgIcon, valCls) {
-			var card = document.createElement('t-card');
-			card.setAttribute('bordered', 'true');
+			var card = common.tcard();
 			var inner = common.el('div', 'nm-card-inner');
 
 			var head = common.el('div', 'nm-card-header');

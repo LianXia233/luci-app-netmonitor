@@ -34,16 +34,12 @@ return view.extend({
 		var page = common.el('div', 'nm-page');
 		root.appendChild(page);
 
-		var hero = document.createElement('t-card');
-		hero.className = 'nm-hero-showcase';
-		hero.setAttribute('bordered', 'true');
+		var hero = common.tcard('nm-hero-showcase');
 		var bannerBox = common.el('div', 'nm-banner-box');
 		var kpi = common.el('div', 'nm-grid');
 		var live = common.el('div', 'nm-grid');
 		var cards = common.el('div', 'nm-grid-wide');
-		var foot = document.createElement('t-card');
-		foot.className = 'nm-footer-panel';
-		foot.setAttribute('bordered', 'true');
+		var foot = common.tcard('nm-footer-panel');
 
 		page.appendChild(hero);
 		page.appendChild(bannerBox);
@@ -199,10 +195,9 @@ return view.extend({
 			}
 		}
 
-		/* TDesign 卡片封装：外层 <t-card>，内容沿用 .nm-card-inner 排版 */
+		/* TDesign 卡片封装：外层 .nm-tcard，内容沿用 .nm-card-inner 排版 */
 		function makeGlassCard(title, val, subText, svgIcon) {
-			var card = document.createElement('t-card');
-			card.setAttribute('bordered', 'true');
+			var card = common.tcard();
 			var inner = common.el('div', 'nm-card-inner');
 
 			var head = common.el('div', 'nm-card-header');

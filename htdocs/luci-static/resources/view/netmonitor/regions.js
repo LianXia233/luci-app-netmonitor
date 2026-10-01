@@ -40,9 +40,8 @@ return view.extend({
 		var page = common.el('div', 'nm-page');
 		root.appendChild(page);
 
-		/* 工具栏（t-card） */
-		var bar = document.createElement('t-card');
-		bar.setAttribute('bordered', 'true');
+		/* 工具栏（TDesign 视觉卡） */
+		var bar = common.tcard();
 		var row = common.el('div', 'nm-toolbar-row');
 
 		var fRange = common.el('div', 'nm-field-glass');
@@ -66,10 +65,8 @@ return view.extend({
 		var grid = common.el('div', 'nm-regions-grid');
 		page.appendChild(grid);
 
-		/* 区域平均延迟对比折线图（t-card） */
-		var compare = document.createElement('t-card');
-		compare.setAttribute('bordered', 'true');
-		compare.className = 'nm-compare-card';
+		/* 区域平均延迟对比折线图（TDesign 视觉卡） */
+		var compare = common.tcard('nm-compare-card');
 		var cmpTitle = common.el('div', 'nm-panel-title-row');
 		cmpTitle.appendChild(common.inlineIcon(icons.trend(32)));
 		cmpTitle.appendChild(common.el('div', 'nm-panel-title', _('Region latency comparison')));
@@ -87,9 +84,7 @@ return view.extend({
 		page.appendChild(lists);
 
 		function regionCard(title, x, icon, regKey) {
-			var c = document.createElement('t-card');
-			c.setAttribute('bordered', 'true');
-			c.className = 'nm-region-card';
+			var c = common.tcard('nm-region-card');
 
 			/* 头部：标题与目标数胶囊（t-tag） */
 			var head = common.el('div', 'nm-region-header');
@@ -152,9 +147,7 @@ return view.extend({
 		}
 
 		function regionTargets(region) {
-			var box = document.createElement('t-card');
-			box.setAttribute('bordered', 'true');
-			box.className = 'nm-subtable-card';
+			var box = common.tcard('nm-subtable-card');
 			var regTitle = (region === 'cn' ? _('China network') : (region === 'overseas' ? _('Overseas network') : _('Other')));
 			box.appendChild(common.el('div', 'nm-region-title', regTitle));
 

@@ -47,10 +47,8 @@ return view.extend({
 		var page = common.el('div', 'nm-page');
 		root.appendChild(page);
 
-		/* 工具栏（t-card） */
-		var bar = document.createElement('t-card');
-		bar.setAttribute('bordered', 'true');
-		bar.className = 'nm-chart-toolbar';
+		/* 工具栏（TDesign 视觉卡） */
+		var bar = common.tcard('nm-chart-toolbar');
 		var row = common.el('div', 'nm-toolbar-row');
 
 		/* 时间范围（t-select） */
@@ -103,10 +101,8 @@ return view.extend({
 		bar.appendChild(chips);
 		page.appendChild(bar);
 
-		/* 图表主卡片（t-card） */
-		var card = document.createElement('t-card');
-		card.setAttribute('bordered', 'true');
-		card.className = 'nm-chart-main-card';
+		/* 图表主卡片（TDesign 视觉卡） */
+		var card = common.tcard('nm-chart-main-card');
 
 		summary = common.el('div', 'nm-chart-summary-grid');
 		card.appendChild(summary);

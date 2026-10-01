@@ -34,8 +34,7 @@ return view.extend({
 		root.appendChild(page);
 
 		/* 工具栏 */
-		var bar = document.createElement('t-card');
-		bar.setAttribute('bordered', 'true');
+		var bar = common.tcard();
 		var row = common.el('div', 'nm-row');
 		row.style.display = 'flex';
 		row.style.alignItems = 'center';
@@ -111,8 +110,7 @@ return view.extend({
 		wrap.appendChild(table);
 		page.appendChild(wrap);
 
-		var tipRow = document.createElement('t-card');
-		tipRow.setAttribute('bordered', 'true');
+		var tipRow = common.tcard();
 		var tipText = common.el('div', '');
 		tipText.innerHTML = _('Interval and timeout set to 0 inherit the global settings.') +
 			' · ' + _('The table scrolls horizontally on small screens.');

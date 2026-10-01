@@ -38,9 +38,8 @@ return view.extend({
 		var page = common.el('div', 'nm-page');
 		root.appendChild(page);
 
-		/* 工具栏（t-card） */
-		var bar = document.createElement('t-card');
-		bar.setAttribute('bordered', 'true');
+		/* 工具栏（TDesign 视觉卡） */
+		var bar = common.tcard();
 		var barRow = common.el('div', 'nm-toolbar-row');
 
 		/* 区域筛选 */
@@ -151,10 +150,8 @@ return view.extend({
 		var cards = common.el('div', 'nm-cards-mobile');
 		page.appendChild(cards);
 
-		/* 底部状态提示条（t-card） */
-		var foot = document.createElement('t-card');
-		foot.setAttribute('bordered', 'true');
-		foot.className = 'nm-foot-sub';
+		/* 底部状态提示条（TDesign 视觉卡） */
+		var foot = common.tcard('nm-foot-sub');
 		page.appendChild(foot);
 
 		function match(t) {
@@ -218,10 +215,9 @@ return view.extend({
 			return tag;
 		}
 
-		/* 指标速览小卡（外层 <t-card>） */
+		/* 指标速览小卡（外层 .nm-tcard） */
 		function makeStripCard(title, val, subText, svgIcon, valCls) {
-			var card = document.createElement('t-card');
-			card.setAttribute('bordered', 'true');
+			var card = common.tcard();
 			var inner = common.el('div', 'nm-card-inner');
 
 			var head = common.el('div', 'nm-card-header');
@@ -296,8 +292,7 @@ return view.extend({
 				tr0.appendChild(td0);
 				tbody.appendChild(tr0);
 
-				var emptyCard = document.createElement('t-card');
-				emptyCard.setAttribute('bordered', 'true');
+				var emptyCard = common.tcard();
 				emptyCard.appendChild(common.el('div', 'nm-empty', _('No matching targets')));
 				cards.appendChild(emptyCard);
 				return;

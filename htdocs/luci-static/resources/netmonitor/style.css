@@ -175,11 +175,22 @@ t-message {
 	flex: 1 1 auto;
 }
 
-/* t-card 默认内边距统一为 18px / 24px，与 .nm-* 内部排版协同
- * （原 t-card body 为 --td-comp-paddingTB-l / --td-comp-paddingLR-xl，水平 32px 偏宽） */
-.nm-root t-card {
+/* TDesign 视觉卡片容器（普通 div，替代 <t-card>）。
+ *
+ * 背景 / 边框 / 圆角全部走 TDesign 变量（--td-*），与真 t-card 视觉一致，
+ * 且内边距 / 布局类可被本样式表正常作用（t-card 的 shadow DOM 克隆会隔离
+ * 外部样式，导致卡片内部 .nm-* 布局全部失效，因此容器改用 div）。 */
+.nm-tcard {
 	--td-comp-paddingTB-l: 18px;
 	--td-comp-paddingLR-xl: 24px;
+	background: var(--td-bg-color-container, var(--nm-card-hi, #ffffff));
+	border: 1px solid var(--td-border-level-1-color, var(--nm-border));
+	border-radius: var(--td-radius-medium, var(--nm-radius, 14px));
+	box-sizing: border-box;
+	min-width: 0;
+	/* TDesign t-card body 的水平内边距为 32px，与 .nm-* 内部排版偏宽；
+	 * 这里固定为与 t-card 变量覆盖一致的内边距（18px / 24px）。 */
+	padding: 18px 24px;
 }
 
 /* ------------------------------------------------- 总览页布局（TDesign 平面化） */
@@ -698,6 +709,9 @@ t-message {
 
 .nm-table td.nm-num {
 	font-variant-numeric: tabular-nums;
+	/* 数值列统一右对齐，便于同列个位对齐、快速比对；
+	 * 名称/地址/状态等文本列保持左对齐。 */
+	text-align: right;
 }
 
 /* ---------------------------------------------------------------- 控件 */
@@ -1351,7 +1365,17 @@ t-message {
 	display: flex;
 	align-items: center;
 	justify-content: flex-end;
-	min-width: 150px;
+	width: 210px;
+	min-width: 210px;
+}
+
+/* 设置页右侧控件统一宽度：下拉 / 文本输入占满 210px 控制区，
+ * 数字输入保持紧凑步进宽度（132px），所有控件右缘对齐。 */
+.nm-setting-ctl t-select,
+.nm-setting-ctl t-input {
+	width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
 }
 
 .nm-setting-ctl .nm-num-input {
@@ -1449,6 +1473,7 @@ t-message {
 	display: flex;
 	align-items: center;
 	gap: 10px;
+	min-width: 0;
 }
 
 .nm-field-glass > label {
@@ -1458,11 +1483,22 @@ t-message {
 	white-space: nowrap;
 }
 
+/* 工具栏筛选字段等宽铺排：宽度不再由 label 长度决定，
+ * 三个字段（区域/状态/搜索 等）在行内自动分占剩余空间，
+ * 视觉上左右对齐、节奏统一；窄屏由 flex-wrap 折行。 */
+.nm-toolbar-row .nm-field-glass {
+	flex: 1 1 200px;
+	min-width: 190px;
+	max-width: 340px;
+}
+
 .nm-field-glass t-select,
 .nm-field-glass t-input,
 .nm-field-glass t-input-number {
 	flex: 1 1 auto;
-	min-width: 150px;
+	min-width: 0;
+	width: 100%;
+	box-sizing: border-box;
 }
 
 /* 目标多选胶囊容器（图表页） */

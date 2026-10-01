@@ -621,6 +621,20 @@ function iconCard(title, value, sub, svg, valueCls) {
 	return c;
 }
 
+/* TDesign 视觉卡片容器（普通 div，替代 <t-card>）。
+ *
+ * 为什么不直接用 <t-card>：t-card 在 shadow DOM 里克隆 light DOM 内容，
+ * 外部样式表（.nm-* 布局类）无法穿透 shadow 边界，卡片内部 flex/grid/
+ * 宽度全部失效（实测 .nm-card-inner 退化为 block、图例粘连、输入框零宽）。
+ * 这里用 div + TDesign CSS 变量复刻 t-card 的视觉（背景 / 边框 / 圆角 /
+ * 内边距），布局样式照常生效；页面交互组件（按钮 / 开关 / 选择 / 输入 /
+ * 弹窗）仍为 <t-*>。 */
+function tcard(extraCls) {
+	var c = el('div', 'nm-tcard');
+	if (extraCls) c.classList.add(extraCls);
+	return c;
+}
+
 /* 统一的状态横幅（服务未运行 / 数据不足 等） */
 function banner(msg, kind) {
 	var b = el('div', 'nm-card');
@@ -664,6 +678,7 @@ return Class.extend({
 	localizeError: localizeError,
 	el: el,
 	svgBox: svgBox,
+	tcard: tcard,
 	cardIcon: cardIcon,
 	inlineIcon: inlineIcon,
 	icons: icons,
