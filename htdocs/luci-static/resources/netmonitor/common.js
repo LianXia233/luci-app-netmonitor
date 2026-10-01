@@ -12,7 +12,10 @@
 'require netmonitor.icons as icons';
 
 var CSS_ID = 'nm-netmonitor-css';
+var TD_CSS_ID = 'nm-tdesign-css';
+var TD_JS_ID = 'nm-tdesign-js';
 var I18N_DOMAIN = 'luci-app-netmonitor';
+var _tdReady = null;
 
 function resourceUrl(path) {
 	if (typeof L !== 'undefined' && L && L.resource)
@@ -31,6 +34,44 @@ function ensureCss() {
 	link.type = 'text/css';
 	link.href = resourceUrl('netmonitor/style.css');
 	document.head.appendChild(link);
+	/* TDesign 组件样式：只注入一次，与业务样式分开便于后续升级替换 */
+	if (!document.getElementById(TD_CSS_ID)) {
+		var td = document.createElement('link');
+		td.id = TD_CSS_ID;
+		td.rel = 'stylesheet';
+		td.type = 'text/css';
+		td.href = resourceUrl('netmonitor/tdesign/tdesign.css');
+		document.head.appendChild(td);
+	}
+}
+
+/* 动态加载 TDesign Web Components 库（UMD，全局注册 <t-*> 自定义元素）。
+ *
+ * 返回 Promise，resolve 后组件树已可用。加载过程只发生一次（_tdReady 缓存）；
+ * 失败时清空缓存并 reject，便于页面在 render 阶段降级或提示。
+ *
+ * 注意：LuCI 的 require 体系不支持动态 import / ESM，因此这里用经典的
+ * <script> 注入方式挂载 UMD 构建，组件库自己负责注册 custom elements。 */
+function tdesign() {
+	if (_tdReady)
+		return _tdReady;
+	_tdReady = new Promise(function(resolve, reject) {
+		if (window.customElements &&
+			typeof window.customElements.get('t-button') !== 'undefined') {
+			resolve();
+			return;
+		}
+		var s = document.createElement('script');
+		s.id = TD_JS_ID;
+		s.src = resourceUrl('netmonitor/tdesign/tdesign.min.js');
+		s.onload = function() { resolve(); };
+		s.onerror = function() {
+			_tdReady = null;
+			reject(new Error('TDesign library failed to load'));
+		};
+		document.head.appendChild(s);
+	});
+	return _tdReady;
 }
 
 /* 加载插件自己的 i18n domain。
@@ -598,6 +639,7 @@ return Class.extend({
 	__name__: 'NetMonitor.common',
 
 	css: ensureCss,
+	tdesign: tdesign,
 	loadI18n: loadI18n,
 	api: api,
 	call: call,

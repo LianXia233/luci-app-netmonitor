@@ -16,8 +16,25 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **TDesign Web Components 组件库本地化**。`tdesign.min.js`（UMD）与
+  `tdesign.css` 随 ipk 包以静态资源分发（`htdocs/luci-static/resources/netmonitor/tdesign/`），
+  由 `common.tdesign()` 动态注入，无外网 CDN 依赖，低端路由器离线可用；
+  组件只注册一次，失败时可降级提示，不影响既有数据链路。
+
 ### 变更
 
+- **全量重构 UI 为 TDesign 组件体系**。七个视图页（Overview / Realtime /
+  Charts / Regions / History / Targets / Settings）的工具栏、卡片、按钮、
+  标签、开关、弹窗与表单控件全面替换为 TDesign 组件
+  （`t-card` / `t-button` / `t-alert` / `t-tag` / `t-switch` / `t-dialog` /
+  `t-input` / `t-input-number` / `t-select` / `t-notification` 等），
+  移除此前自研的毛玻璃玻璃态样式；TDesign 主题变量经
+  `style.css` 映射到 LuCI 主题变量（`--nm-accent` → `--td-brand-color` 等），
+  保持与既有主题及暗色模式兼容。**自研动态 SVG 动效与图表渲染逻辑全部保留**：
+  状态仪表、实时采样声波、环形弧长等动效由真实测量值驱动，TDesign 图标无法
+  表达此类状态化动效，因此两类视觉体系按职责分工共存。
 - **UI 布局与排版适配 PC + 移动端**。全页面统一响应式断点
   （手机 ≤640px / 平板 ≤1100px / 桌面 ≥1101px）：指标类卡片栅格按断点显式
   定列数（桌面 3 列 / 平板 2 列 / 手机 2 列），手机端不再一行只放一张卡片，
