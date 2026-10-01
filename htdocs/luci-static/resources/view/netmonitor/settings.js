@@ -546,15 +546,14 @@ return view.extend({
 					user-select: none;
 				}
 
-				/* 底部保存与变更动作栏（浮动卡片） */
+				/* 底部保存与变更动作栏（页内卡片，不悬浮）。
+				 * 不做 position: sticky：改动经标准 UCI API 暂存后，OpenWrt 原生
+				 * 「保存并应用」栏会自动出现在视口底部，悬浮会与它叠成两栏互相冲突。 */
 				.nm-action-bar-glass {
 					padding: 16px 28px;
 					display: flex;
 					align-items: center;
 					gap: 16px;
-					position: sticky;
-					bottom: 16px;
-					z-index: 100;
 					background: rgba(255, 255, 255, 0.92) !important;
 					backdrop-filter: blur(24px) saturate(200%) !important;
 					-webkit-backdrop-filter: blur(24px) saturate(200%) !important;
@@ -583,6 +582,13 @@ return view.extend({
 					background: rgba(236, 253, 245, 0.9);
 					border: 1px solid rgba(167, 243, 208, 0.95);
 					color: #047857;
+				}
+
+				/* 已暂存待应用：改动已入 UCI 会话，等原生栏提交 */
+				.nm-dirty-pill.staged {
+					background: rgba(239, 246, 255, 0.9);
+					border: 1px solid rgba(191, 219, 254, 0.95);
+					color: #1d4ed8;
 				}
 
 				/* 动态 SVG 微动效 */
@@ -995,21 +1001,32 @@ return view.extend({
 
 		function markDirty() {
 			var isDirty = !sameAsBaseline(collect());
+			setPill(isDirty ? 'dirty' : 'clean');
 			if (btnSave) btnSave.disabled = !isDirty;
 			if (btnDiscard) btnDiscard.disabled = !isDirty;
-			if (dirtyTag) {
-				dirtyTag.className = 'nm-dirty-pill ' + (isDirty ? 'dirty' : 'clean');
-				dirtyTag.innerHTML = isDirty
-					? `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6" fill="#f59e0b"/></svg><span>${_('有未保存的修改')}</span>`
-					: `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M13.485 1.929a1 1 0 0 1 1.414 1.414L6.343 11.899 1.1 6.657a1 1 0 0 1 1.414-1.414l3.829 3.829 7.142-7.143z" fill="#10b981"/></svg><span>${_('所有修改已生效')}</span>`;
-			}
+		}
+
+		/* 状态胶囊：clean（无改动）/ dirty（有未保存的修改）/ staged（已暂存待应用） */
+		function setPill(mode) {
+			if (!dirtyTag) return;
+			dirtyTag.className = 'nm-dirty-pill ' + mode;
+			if (mode === 'dirty')
+				dirtyTag.innerHTML = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6" fill="#f59e0b"/></svg><span>${_('有未保存的修改')}</span>`;
+			else if (mode === 'staged')
+				dirtyTag.innerHTML = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6" fill="#3b82f6"/></svg><span>${_('已暂存，待应用')}</span>`;
+			else
+				dirtyTag.innerHTML = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M13.485 1.929a1 1 0 0 1 1.414 1.414L6.343 11.899 1.1 6.657a1 1 0 0 1 1.414-1.414l3.829 3.829 7.142-7.143z" fill="#10b981"/></svg><span>${_('所有修改已生效')}</span>`;
 		}
 
 		var actCard = common.el('div', 'nm-glass-card nm-action-bar-glass');
-		btnSave = common.el('button', 'nm-btn-glass nm-btn-primary-glass', _('保存并应用'));
+		btnSave = common.el('button', 'nm-btn-glass nm-btn-primary-glass', _('保存更改'));
 		btnDiscard = common.el('button', 'nm-btn-glass', _('放弃修改'));
 		dirtyTag = common.el('div', 'nm-dirty-pill clean');
 
+		/* 保存只做「暂存」：把改动经标准 UCI API（uci.set/unset + uci.save）写入
+		 * 会话的待应用更改，提交（落盘 + reload）交给 OpenWrt 原生「保存并应用」栏。
+		 * 刻意不再在这里调 ui.changes.apply() —— 那会让本页自带的按钮和原生栏
+		 * 出现两套应用入口，互相冲突。 */
 		btnSave.addEventListener('click', function() {
 			var v = collect();
 			var bad = validate(v);
@@ -1022,21 +1039,30 @@ return view.extend({
 
 			common.saveConfig(ops).then(function(changed) {
 				if (changed === 0) {
+					markDirty();
 					common.notify(_('没有需要保存的修改'));
 					return;
 				}
-				return common.applyChanges();
+				baseline = takeBaseline(v);
+				btnSave.disabled = true;
+				btnDiscard.disabled = false;
+				renderStrip(v);
+				setPill('staged');
+				common.notify(_('更改已暂存，请点击页面底部的「保存并应用」使其生效'));
 			}).catch(function(e) {
-				common.notify(String(e.message || e), 'error');
-			}).then(function() {
 				btnSave.disabled = false;
-				markDirty();
+				common.notify(String(e.message || e), 'error');
 			});
 		});
 
 		btnDiscard.addEventListener('click', function() {
 			applyConfig(cfg);
-			common.notify(_('修改已放弃'));
+			/* 同步撤回本页暂存的会话改动，避免「表单已还原、底部原生栏仍显示待应用」 */
+			return common.revertConfig('netmonitor').catch(function() {
+				/* 撤回失败不阻断表单复位 */
+			}).then(function() {
+				common.notify(_('修改已放弃'));
+			});
 		});
 
 		actCard.appendChild(btnSave);
