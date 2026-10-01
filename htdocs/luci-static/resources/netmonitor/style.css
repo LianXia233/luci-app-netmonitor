@@ -965,6 +965,11 @@
 	/* 设置项数字输入框占满一行 */
 	.nm-root .nm-num-input { width: 100%; }
 
+	/* 图表 Tooltip：手机上加大字号、允许折行，避免多条曲线数值溢出屏外 */
+	.nm-root .nm-tip { font-size: 13px; max-width: 78vw; white-space: normal; }
+	.nm-root .nm-tip-row { flex-wrap: wrap; row-gap: 2px; }
+	.nm-root .nm-tip-val { padding-left: 6px; }
+
 	/* 基础组件（非毛玻璃）手机排版 */
 	.nm-root { font-size: 13.5px; }
 	.nm-hero { padding: 16px; gap: 12px; }
