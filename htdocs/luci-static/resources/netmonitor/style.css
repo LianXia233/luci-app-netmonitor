@@ -874,18 +874,42 @@
  * 弹窗挂在 body 下（不在 .nm-root 内），需用 body 前缀单独覆盖。 */
 @media (max-width: 640px) {
 	body .nm-root { padding: 14px 10px 40px; }
-	.nm-root .nm-page { gap: 14px; }
+	.nm-root .nm-page { gap: 12px; }
 
-	/* 所有栅格在窄屏统一单列，避免 auto-fit minmax 超过容器宽度造成横向溢出 */
+	/* 手机端栅格：卡片型栅格两列并排（缩短下拉距离），
+	 * 大卡片与明细表保持单列，避免内容过挤。 */
 	.nm-root .nm-grid,
 	.nm-root .nm-grid-wide,
 	.nm-root .nm-strip-grid,
 	.nm-root .nm-chart-summary-grid,
-	.nm-root .nm-regions-grid,
-	.nm-root .nm-tables-grid,
 	.nm-root .nm-cards-mobile {
-		grid-template-columns: 1fr !important;
+		grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+		gap: 12px !important;
 	}
+	.nm-root .nm-regions-grid,
+	.nm-root .nm-tables-grid {
+		grid-template-columns: 1fr !important;
+		gap: 14px !important;
+	}
+
+	/* 两列布局下的紧凑排版：收紧卡内边距、图标与字号 */
+	.nm-root .nm-card-inner { padding: 14px 14px !important; }
+	.nm-root .nm-card-header { margin-bottom: 6px; }
+	.nm-root .nm-card-number { font-size: 1.3rem; }
+	.nm-root .nm-card-description { font-size: 0.74rem; margin-top: 5px; }
+	.nm-root .nm-card-icon-box { width: 34px; height: 34px; }
+	.nm-root .nm-card-icon-box svg { width: 34px; height: 34px; }
+	.nm-root .nm-sum-card { padding: 12px 14px !important; }
+	.nm-root .nm-sum-card-val { font-size: 1.25rem; }
+
+	/* 目标卡片（概览 / 实时窄屏卡）两列下的紧凑适配 */
+	.nm-root .nm-target-head { flex-wrap: wrap; row-gap: 4px; }
+	.nm-root .nm-target-name { font-size: 14px; }
+	.nm-root .nm-target-host { font-size: 11px; }
+	.nm-root .nm-latency-num { font-size: 24px; }
+	.nm-root .nm-target-rings { gap: 8px 10px; }
+	.nm-root .nm-ring-svg svg { width: 34px; height: 34px; }
+	.nm-root .nm-target-metrics { gap: 3px 10px; font-size: 12.5px; }
 
 	/* Hero 状态徽章：3 个一行紧凑排布，减少换行后的参差 */
 	.nm-root .nm-hero-stats-row { gap: 10px; }
@@ -941,8 +965,8 @@
 	.nm-root .nm-compare-card,
 	.nm-root .nm-table-panel { padding: 18px 16px; }
 	.nm-root .nm-region-hero { gap: 14px; padding: 12px 14px; }
-	.nm-root .nm-region-svg-box { width: 64px; height: 64px; }
-	.nm-root .nm-region-avg-val { font-size: 1.7rem; }
+	.nm-root .nm-region-svg-box { width: 56px; height: 56px; }
+	.nm-root .nm-region-avg-val { font-size: 1.45rem; }
 	.nm-root .nm-target-rings-row { flex-wrap: wrap; }
 	.nm-root .nm-ring-card { flex: 1 1 140px; min-width: 0; }
 

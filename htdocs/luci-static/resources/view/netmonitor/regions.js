@@ -135,18 +135,19 @@ return view.extend({
 					box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.16);
 				}
 
-				/* 分区对比大卡片网格 */
+				/* 分区对比大卡片网格：每卡限宽居中，避免在宽屏上拉得过大 */
 				.nm-regions-grid {
 					display: grid;
-					grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-					gap: 20px;
+					grid-template-columns: repeat(auto-fit, minmax(340px, 520px));
+					justify-content: center;
+					gap: 18px;
 				}
 
 				.nm-region-card {
-					padding: 26px;
+					padding: 20px;
 					display: flex;
 					flex-direction: column;
-					gap: 18px;
+					gap: 14px;
 				}
 
 				.nm-region-header {
@@ -156,7 +157,7 @@ return view.extend({
 				}
 
 				.nm-region-title {
-					font-size: 1.18rem;
+					font-size: 1.02rem;
 					font-weight: 750;
 					color: var(--nm-txt-title);
 					letter-spacing: -0.02em;
@@ -186,25 +187,31 @@ return view.extend({
 					color: var(--nm-c-ov);
 				}
 
-				/* 区域主视觉展位：SVG 图标 + 主读数 */
+				/* 区域主视觉展位：SVG 图标 + 主读数（收敛尺寸，避免在宽屏上过大） */
 				.nm-region-hero {
 					display: flex;
 					align-items: center;
-					gap: 20px;
+					gap: 14px;
 					background: rgba(255, 255, 255, 0.55);
-					border-radius: 18px;
-					padding: 16px 20px;
+					border-radius: 14px;
+					padding: 12px 16px;
 					border: 1px solid rgba(255, 255, 255, 0.85);
 				}
 
 				.nm-region-svg-box {
 					flex-shrink: 0;
-					width: 84px;
-					height: 84px;
+					width: 64px;
+					height: 64px;
 					display: flex;
 					align-items: center;
 					justify-content: center;
 					position: relative;
+				}
+
+				/* 图标以 84px 生成（viewBox 120×120），随盒体等比缩放，避免溢出 */
+				.nm-region-svg-box svg {
+					width: 100%;
+					height: 100%;
 				}
 
 				.nm-region-hero-right {
@@ -214,7 +221,7 @@ return view.extend({
 				}
 
 				.nm-region-avg-val {
-					font-size: 2.1rem;
+					font-size: 1.55rem;
 					font-weight: 850;
 					letter-spacing: -0.04em;
 					line-height: 1.1;
@@ -222,7 +229,7 @@ return view.extend({
 				}
 
 				.nm-region-avg-label {
-					font-size: 0.82rem;
+					font-size: 0.72rem;
 					font-weight: 650;
 					color: var(--nm-txt-sub);
 					text-transform: uppercase;
@@ -233,7 +240,7 @@ return view.extend({
 				.nm-region-metrics-grid {
 					display: grid;
 					grid-template-columns: repeat(3, 1fr);
-					gap: 10px;
+					gap: 8px;
 				}
 
 				.nm-mini-metric {
@@ -242,7 +249,7 @@ return view.extend({
 					-webkit-backdrop-filter: blur(8px);
 					border: 1px solid rgba(255, 255, 255, 0.9);
 					border-radius: 12px;
-					padding: 9px 12px;
+					padding: 8px 10px;
 					display: flex;
 					flex-direction: column;
 					gap: 2px;
