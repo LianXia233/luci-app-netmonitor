@@ -136,7 +136,11 @@ return view.extend({
 		var statBody = common.el('tbody', '');
 		var htr = common.el('tr', '');
 		[_('Target'), _('Region'), _('Samples'), _('Average'), _('Min'), _('Max'), _('P50'), _('P95'), _('Loss'), _('Availability')]
-			.forEach(function(h) { htr.appendChild(common.el('th', '', h)); });
+			.forEach(function(h) {
+				var th = common.el('th', '', h);
+				th.setAttribute('scope', 'col');
+				htr.appendChild(th);
+			});
 		statHead.appendChild(htr);
 		statTable.appendChild(statHead);
 		statTable.appendChild(statBody);

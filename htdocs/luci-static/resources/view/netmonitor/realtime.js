@@ -141,8 +141,15 @@ return view.extend({
 			_('在线率'), _('连续失败'), _('最后检测')
 		];
 		var tr = common.el('tr', '');
-		heads.forEach(function(h) {
-			tr.appendChild(common.el('th', '', h));
+		heads.forEach(function(h, hi) {
+			var th = common.el('th', '', h);
+			/* 首列是状态指示列（原为空表头），补上列名；
+			 * 其余列加 scope，读屏逐格导航时能正确播报列名。 */
+			if (hi === 0)
+				th.setAttribute('aria-label', _('Status'));
+			else
+				th.setAttribute('scope', 'col');
+			tr.appendChild(th);
 		});
 		thead.appendChild(tr);
 
@@ -319,10 +326,14 @@ return view.extend({
 				tdRegion.appendChild(regionTag(t));
 				row.appendChild(tdRegion);
 
-				// 5. 状态与诊断图标
-				var stText = t.enabled ? (t.status === 'online' ? _('在线') : _('失败')) : _('停用');
-				if (!t.enabled) stText = _('停用');
-				else if (t.last_error) stText = common.errorText(t.last_error);
+			// 5. 状态与诊断图标
+			/* 状态文案：停用优先，其次具体错误类型（DNS/超时/不可达），
+			 * 最后才回落到笼统的「在线 / 失败」。原先先三元赋值再 if 覆写，
+			 * 两个分支表达同一件事且顺序易错，这里合并为一条判定链。 */
+			var stText;
+			if (!t.enabled) stText = _('停用');
+			else if (t.last_error) stText = common.errorText(t.last_error);
+			else stText = (t.status === 'online') ? _('在线') : _('失败');
 
 				var tdSt = common.el('td', '');
 				tdSt.style.display = 'flex';

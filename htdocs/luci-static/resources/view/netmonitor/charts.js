@@ -167,17 +167,33 @@ return view.extend({
 					tag.className = 'nm-chip-tag';
 					tag.setAttribute('theme', on ? 'primary' : 'default');
 					tag.setAttribute('variant', on ? 'light' : 'outline');
+					/* 胶囊是可点切换的开关，语义上等同 checkbox：
+					 * 给 role / tabindex / aria-pressed 后，键盘用户能聚焦
+					 * 并用 Enter / 空格切换，读屏也会播报「已按下」状态。 */
+					tag.setAttribute('role', 'button');
+					tag.setAttribute('tabindex', '0');
+					tag.setAttribute('aria-pressed', on ? 'true' : 'false');
+					tag.setAttribute('aria-label', (s.name || s.id));
 
 					var dot = common.el('span', 'nm-chip-dot');
 					dot.style.backgroundColor = seriesColor;
 					tag.appendChild(dot);
 					tag.appendChild(document.createTextNode(s.name || s.id));
 
-					tag.addEventListener('click', function() {
+					function toggle() {
 						if (selected[s.id]) delete selected[s.id];
 						else selected[s.id] = true;
 						renderChips();
 						drawChart();
+					}
+					tag.addEventListener('click', toggle);
+					/* 自定义元素默认不响应 Enter / 空格，需手动补，
+					 * 否则 role="button" 承诺了可操作性却只有鼠标能用。 */
+					tag.addEventListener('keydown', function(e) {
+						if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+							e.preventDefault();
+							toggle();
+						}
 					});
 					chips.appendChild(tag);
 				})(data.series[i], i);

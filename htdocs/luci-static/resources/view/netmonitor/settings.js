@@ -241,6 +241,11 @@ return view.extend({
 		spacerSvc.style.flex = '1';
 		svcRow.appendChild(spacerSvc);
 
+		/* 服务控制按钮。disabled 由 refreshSvc 按实时运行态刷新：
+		 * 避免「服务已在运行还去点启动」这种无意义请求，也让当前状态
+		 * 一眼可辨。Restart 两种状态下都有效，始终可点。 */
+		var btnStart, btnStop;
+
 		function svcBtn(label, fn, isPrimary) {
 			var b = document.createElement('t-button');
 			b.setAttribute('theme', isPrimary ? 'primary' : 'default');
@@ -258,8 +263,10 @@ return view.extend({
 			return b;
 		}
 
-		svcRow.appendChild(svcBtn(_('启动'), common.api.startService, true));
-		svcRow.appendChild(svcBtn(_('停止'), common.api.stopService, false));
+		btnStart = svcBtn(_('启动'), common.api.startService, true);
+		btnStop = svcBtn(_('停止'), common.api.stopService, false);
+		svcRow.appendChild(btnStart);
+		svcRow.appendChild(btnStop);
 		svcRow.appendChild(svcBtn(_('重启'), common.api.restartService, false));
 		svcCard.appendChild(svcRow);
 
@@ -277,13 +284,23 @@ return view.extend({
 		btnClear.setAttribute('variant', 'outline');
 		btnClear.textContent = _('清空历史');
 		btnClear.addEventListener('click', function() {
-			if (!window.confirm(_('确定清空所有历史数据？'))) return;
-			setDisabled(btnClear, true);
-			common.api.clearHistory(null).then(function() {
-				common.notify(_('历史已清空'));
-			}).catch(function(e) {
-				common.notify(String(e.message || e), 'error');
-			}).then(function() { setDisabled(btnClear, false); });
+			/* 不可撤销的破坏性操作：用 TDesign 确认弹窗（与全站视觉一致），
+			 * 且不阻塞主线程 —— 原生 confirm 在低端路由器上会整页卡死。 */
+			common.confirmDialog({
+				header: _('清空历史'),
+				message: _('确定清空所有历史数据？'),
+				ok: _('清空历史'),
+				danger: true
+			}).then(function(ok) {
+				if (!ok) return;
+				setDisabled(btnClear, true);
+				/* confirmDialog 关闭后焦点已释放，此处重新接管禁用态 */
+				return common.api.clearHistory(null).then(function() {
+					common.notify(_('历史已清空'));
+				}).catch(function(e) {
+					common.notify(String(e.message || e), 'error');
+				}).then(function() { setDisabled(btnClear, false); });
+			});
 		});
 		clearRow.appendChild(btnClear);
 		svcCard.appendChild(clearRow);
@@ -295,10 +312,15 @@ return view.extend({
 				svcIcon.appendChild(common.svgBox(icons.service(!!d.running, 30), ''));
 				svcText.textContent = (d.running ? _('服务运行中') : _('服务已停止')) +
 					' · ' + _('最后更新') + ': ' + (d.tick ? common.fmt.ago(d.tick) : _('从未检测'));
+				/* 按钮可用态跟随实时运行态：已在跑就别让用户再点「启动」 */
+				setDisabled(btnStart, !!d.running);
+				setDisabled(btnStop, !d.running);
 			}).catch(function() {
 				common.clear(svcIcon);
 				svcIcon.appendChild(common.svgBox(icons.service(false, 30), ''));
 				svcText.textContent = _('服务已停止');
+				setDisabled(btnStart, false);
+				setDisabled(btnStop, true);
 			});
 		}
 
