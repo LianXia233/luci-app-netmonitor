@@ -292,14 +292,11 @@ jobs:
           # 浏览器抛 SyntaxError、window.TDesign 未定义——而 DOM 里 t-button/t-tag
           # 标签照样存在，只是没有样式与行为，肉眼与页面截图都很难第一时间发现。
           #
-          # 根因：luci.mk 的 LUCI_MINIFY_JS 默认 1，会对每个 .js 跑 jsmin。
-          # 该工具处理第三方 UMD bundle（28 行、含 /*! */ 许可证注释）时把文件
-          # 压成 3 行并删掉 691636 字节，删除点落在语句中间，直接破坏语法。
-          # 已在 Makefile 里 LUCI_MINIFY_JS:=0 / LUCI_MINIFY_CSS:=0 关掉，
-          # 此步负责证明「关掉之后包内文件与仓库源码逐字节一致」。
-          #
-          # 校验对象：htdocs/ -> /www/，root/ -> /。
-          # 跳过 .ipk/.apk/.gz 等打包中间产物与 tests/（不进包）。
+          # 根因：luci.mk 的 LUCI_MINIFY_JS / LUCI_MINIFY_CSS 默认 ?=1，会对每个
+          # .js/.css 跑 jsmin / csstidy。该工具处理第三方 UMD bundle（28 行、含
+          # /*! */ 许可证注释）时把文件压成 3 行、删掉 691636 字节，删除点落在
+          # 语句中间，直接破坏语法。已在 Makefile 里 LUCI_MINIFY_JS:=0 /
+          # LUCI_MINIFY_CSS:=0 关掉，此步负责证明「关掉之后产物不再被破坏」。
 
           SRC="$GITHUB_WORKSPACE/$NM_PKG"
           WORK=/tmp/payload-verify
@@ -318,7 +315,6 @@ jobs:
           case "$main_pkg" in
             *.ipk)
               ( cd "$WORK" && ar x "$main_pkg" )
-              ls -la "$WORK"
               if [ -f "$WORK/data.tar.gz" ]; then
                 mkdir -p "$WORK/x"; tar -xzf "$WORK/data.tar.gz" -C "$WORK/x"
               elif [ -f "$WORK/data.tar" ]; then
@@ -333,44 +329,101 @@ jobs:
               ( cd "$WORK/x" && apk extract --allow-untrusted "$main_pkg" )
               ;;
           esac
-
           [ -d "$WORK/x" ] || { echo "::error::extraction produced no directory"; exit 1; }
 
-          total=0; bad=0
-          for base in htdocs root; do
-            [ -d "$SRC/$base" ] || continue
-            find "$SRC/$base" -type f | while read -r src; do
-              rel="${src#"$SRC/$base"/}"
-              case "$rel" in
-                tests/*|*.ipk|*.apk|*.gz) continue ;;
-              esac
-              case "$base" in
-                htdocs) want="/www/$rel" ;;
-                root)   want="/$rel" ;;
-              esac
-              got="$WORK/x$want"
-              if [ ! -f "$got" ]; then
-                echo "::error::MISSING in package: $want (source: $src)"
-                exit 1
-              fi
-              a=$(sha256sum "$src" | cut -d' ' -f1)
-              b=$(sha256sum "$got" | cut -d' ' -f1)
-              if [ "$a" != "$b" ]; then
-                echo "::error::CONTENT MISMATCH: $want"
-                echo "::error::  source  : $a  ($(wc -c < "$src") bytes)"
-                echo "::error::  package : $b  ($(wc -c < "$got") bytes)"
-                echo "::error::  若这是 .js/.css 且 package 明显更小，说明压缩器破坏了产物；"
-                echo "::error::  检查 Makefile 里 LUCI_MINIFY_JS / LUCI_MINIFY_CSS 是否仍为 1。"
-                exit 1
-              fi
-            done || exit 1
-            # while 在 subshell 中运行，计数不可靠；用文件列表落地后统一核对
-          done
+          # 判定方式按文件类型分三档，**不能用体积比例**。
+          #
+          # 先说为什么不用比例：luci.mk 合法地重写 htdocs 下的 .js/.css（剥头部
+          # 注释、压行、改写 view/ 的头部），体积天然小很多。实测同一批文件里
+          #   common.js         25560 -> 15806  (61.9%，完全正常)
+          #   tdesign.min.js  7385397 -> 6693761 (90.6%，语法已坏)
+          # 剥注释后 tdesign 理论值 91.3%，与损坏后的 90.6% 几乎重合 ——
+          # 任何固定百分比阈值都会在「正常压缩」与「真实损坏」之间二选一，
+          # 要么误报让 CI 永远红，要么漏报让坏产物发出去。
+          #
+          # 唯一能把两者分开的判据是**语法**：正常压缩产出的文件仍能解析，
+          # 1.4.0 那次被切坏的不能。故 .js 一律 node --check 语法校验。
+          #
+          #   .js            -> node --check 必须通过（能精准抓住 1.4.0 这类损坏）
+          #   .json / .sh /
+          #   无扩展名         -> 逐字节 sha256（实测 root/ 下 7/7 完全一致）
+          #   .css           -> 只校验存在且非空（csstidy 不改变语义，无语法可查）
+          #
+          # 注意 root/ 的路径映射：root/etc/x -> /etc/x（htdocs 才是 /www/ 前缀）。
+          # 早先版本把两者都当 /www/ 处理，直接导致每次构建都报 MISSING。
+          # 护栏自身必须先被验证是对的，否则形同虚设。
 
-          # 统一统计（上面的循环已逐个 fail-fast，这里补一份汇总便于日志阅读）
-          find "$SRC/htdocs" "$SRC/root" -type f 2>/dev/null \
-            | grep -Ev '/tests/|\.(ipk|apk|gz)$' > /tmp/payload-files.txt || true
-          echo "==> files compared: $(wc -l < /tmp/payload-files.txt)"
+          checked=0
+
+          # ---- 1) JavaScript：语法必须合法 ----
+          for src in $(find "$SRC/htdocs" "$SRC/root" -type f -name '*.js' 2>/dev/null | sort); do
+            rel="${src#$SRC/}"
+            case "$rel" in
+              htdocs/*) want="/www/${rel#htdocs/}" ;;
+              root/*)   want="/${rel#root/}" ;;
+              *) continue ;;
+            esac
+            got="$WORK/x$want"
+            if [ ! -f "$got" ]; then
+              echo "::error::MISSING in package: $want (source: $src)"
+              exit 1
+            fi
+            if ! node --check "$got" >/dev/null 2>&1; then
+              echo "::error::INVALID JAVASCRIPT in package: $want"
+              echo "::error::  node --check 失败 —— 该文件在打包中被破坏。"
+              echo "::error::  1.4.0 的 tdesign.min.js 即是此症状（jsmin 切断语句）。"
+              echo "::error::  检查 Makefile 里 LUCI_MINIFY_JS 是否仍为 1。"
+              node --check "$got" 2>&1 | head -5 || true
+              exit 1
+            fi
+            checked=$((checked + 1))
+          done
+          echo "==> JS syntax OK ($checked files)"
+
+          # ---- 2) CSS / JSON / shell / 无扩展名：存在性 + 内容校验 ----
+          strict=0
+          for src in $(find "$SRC/htdocs" "$SRC/root" -type f 2>/dev/null | sort); do
+            rel="${src#$SRC/}"
+            case "$rel" in
+              htdocs/*) want="/www/${rel#htdocs/}" ;;
+              root/*)   want="/${rel#root/}" ;;
+              *) continue ;;
+            esac
+            case "$want" in
+              *.js|*.ipk|*.apk|*.gz) continue ;;
+            esac
+            got="$WORK/x$want"
+            if [ ! -f "$got" ]; then
+              echo "::error::MISSING in package: $want (source: $src)"
+              exit 1
+            fi
+            if [ ! -s "$got" ]; then
+              echo "::error::EMPTY in package: $want"
+              exit 1
+            fi
+            case "$got" in
+              *.css)
+                # csstidy 会重排 css，无法逐字节比；只要求非空且保留主要选择器
+                if ! grep -q '{' "$got"; then
+                  echo "::error::CSS LOOKS BROKEN in package: $want (no rule block)"
+                  exit 1
+                fi
+                ;;
+              *)
+                # json / sh / 无扩展名：luci.mk 原样打包，必须逐字节一致
+                a=$(sha256sum "$src" | cut -d' ' -f1)
+                b=$(sha256sum "$got" | cut -d' ' -f1)
+                if [ "$a" != "$b" ]; then
+                  echo "::error::CONTENT MISMATCH: $want"
+                  echo "::error::  source  : $a ($(wc -c < "$src") bytes)"
+                  echo "::error::  package : $b ($(wc -c < "$got") bytes)"
+                  exit 1
+                fi
+                strict=$((strict + 1))
+                ;;
+            esac
+          done
+          echo "==> byte-identical files OK ($strict files)"
           echo "==> payload integrity OK"
 
       - name: Collect artifacts
