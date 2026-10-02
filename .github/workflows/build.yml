@@ -281,6 +281,98 @@ jobs:
             echo "==> i18n artifact present: $found"
           done
 
+      - name: Verify payload integrity against source
+        shell: sh
+        run: |
+          set -eu
+          cd "$SDK_DIR"
+
+          # 1.4.0 踩过的坑（务必保留这道护栏）：产物能编出来、CI 全绿、页面框架
+          # 与响应式布局都正常，但随包分发的 7 MB tdesign.min.js 被 jsmin 压坏，
+          # 浏览器抛 SyntaxError、window.TDesign 未定义——而 DOM 里 t-button/t-tag
+          # 标签照样存在，只是没有样式与行为，肉眼与页面截图都很难第一时间发现。
+          #
+          # 根因：luci.mk 的 LUCI_MINIFY_JS 默认 1，会对每个 .js 跑 jsmin。
+          # 该工具处理第三方 UMD bundle（28 行、含 /*! */ 许可证注释）时把文件
+          # 压成 3 行并删掉 691636 字节，删除点落在语句中间，直接破坏语法。
+          # 已在 Makefile 里 LUCI_MINIFY_JS:=0 / LUCI_MINIFY_CSS:=0 关掉，
+          # 此步负责证明「关掉之后包内文件与仓库源码逐字节一致」。
+          #
+          # 校验对象：htdocs/ -> /www/，root/ -> /。
+          # 跳过 .ipk/.apk/.gz 等打包中间产物与 tests/（不进包）。
+
+          SRC="$GITHUB_WORKSPACE/$NM_PKG"
+          WORK=/tmp/payload-verify
+          rm -rf "$WORK"; mkdir -p "$WORK"
+
+          main_pkg=$(find "$SDK_DIR/bin" -type f \( -name "$NM_PKG*.ipk" -o -name "$NM_PKG*.apk" \) \
+                     -not -name '*i18n*' 2>/dev/null | head -1)
+          if [ -z "$main_pkg" ]; then
+            echo "::error::main package not found under bin/"
+            exit 1
+          fi
+          echo "==> verifying payload of: $main_pkg"
+
+          # ipk 是 ar 归档（内含 data.tar.gz）；apk(3.x) 是 ADB 格式，
+          # 由 SDK 容器内的 apk 工具解开最可靠。
+          case "$main_pkg" in
+            *.ipk)
+              ( cd "$WORK" && ar x "$main_pkg" )
+              ls -la "$WORK"
+              if [ -f "$WORK/data.tar.gz" ]; then
+                mkdir -p "$WORK/x"; tar -xzf "$WORK/data.tar.gz" -C "$WORK/x"
+              elif [ -f "$WORK/data.tar" ]; then
+                mkdir -p "$WORK/x"; tar -xf "$WORK/data.tar" -C "$WORK/x"
+              else
+                echo "::error::cannot locate data tarball inside $main_pkg"
+                ls -la "$WORK"; exit 1
+              fi
+              ;;
+            *.apk)
+              mkdir -p "$WORK/x"
+              ( cd "$WORK/x" && apk extract --allow-untrusted "$main_pkg" )
+              ;;
+          esac
+
+          [ -d "$WORK/x" ] || { echo "::error::extraction produced no directory"; exit 1; }
+
+          total=0; bad=0
+          for base in htdocs root; do
+            [ -d "$SRC/$base" ] || continue
+            find "$SRC/$base" -type f | while read -r src; do
+              rel="${src#"$SRC/$base"/}"
+              case "$rel" in
+                tests/*|*.ipk|*.apk|*.gz) continue ;;
+              esac
+              case "$base" in
+                htdocs) want="/www/$rel" ;;
+                root)   want="/$rel" ;;
+              esac
+              got="$WORK/x$want"
+              if [ ! -f "$got" ]; then
+                echo "::error::MISSING in package: $want (source: $src)"
+                exit 1
+              fi
+              a=$(sha256sum "$src" | cut -d' ' -f1)
+              b=$(sha256sum "$got" | cut -d' ' -f1)
+              if [ "$a" != "$b" ]; then
+                echo "::error::CONTENT MISMATCH: $want"
+                echo "::error::  source  : $a  ($(wc -c < "$src") bytes)"
+                echo "::error::  package : $b  ($(wc -c < "$got") bytes)"
+                echo "::error::  若这是 .js/.css 且 package 明显更小，说明压缩器破坏了产物；"
+                echo "::error::  检查 Makefile 里 LUCI_MINIFY_JS / LUCI_MINIFY_CSS 是否仍为 1。"
+                exit 1
+              fi
+            done || exit 1
+            # while 在 subshell 中运行，计数不可靠；用文件列表落地后统一核对
+          done
+
+          # 统一统计（上面的循环已逐个 fail-fast，这里补一份汇总便于日志阅读）
+          find "$SRC/htdocs" "$SRC/root" -type f 2>/dev/null \
+            | grep -Ev '/tests/|\.(ipk|apk|gz)$' > /tmp/payload-files.txt || true
+          echo "==> files compared: $(wc -l < /tmp/payload-files.txt)"
+          echo "==> payload integrity OK"
+
       - name: Collect artifacts
         id: collect
         shell: sh
