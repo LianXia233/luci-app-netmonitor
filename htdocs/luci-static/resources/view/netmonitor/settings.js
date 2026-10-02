@@ -419,30 +419,37 @@ return view.extend({
 			));
 		}
 
-		/* ---------------------------------------------------- 表单控件工厂（TDesign） */
+		/* ---------------------------------------------------- 表单控件工厂（原生控件）
+		 *
+		 * 原 TDesign Web Components（t-switch / t-select / t-input-number / t-input）
+		 * 基于 Omi 框架，受控模式下点击与下拉交互实测失效（真实浏览器点击也打不开
+		 * 下拉、开关不切换状态）。这里改用原生 HTML 控件并保持 TDesign 观感
+		 * （样式见 style.css 的 .nm-switch / .nm-select / .nm-input），
+		 * 交互由浏览器原生保证，兼容 LuCI 全部目标浏览器。 */
 		function switchControl(key, value) {
-			var sw = document.createElement('t-switch');
-			sw.value = (value === '1' || value === 1 || value === true);
-			sw.addEventListener('change', function(e) {
-				sw.value = !!(e.detail && e.detail.value);
-				markDirty();
-			});
+			var sw = document.createElement('input');
+			sw.type = 'checkbox';
+			sw.className = 'nm-switch';
+			sw.checked = (value === '1' || value === 1 || value === true);
+			sw.addEventListener('change', markDirty);
 			return { kind: 'flag', el: sw };
 		}
 
 		function intControl(key, value, min, max) {
-			var n = document.createElement('t-input-number');
+			var n = document.createElement('input');
+			n.type = 'number';
 			n.className = 'nm-num-input';
 			n.min = min;
 			n.max = max;
-			n.value = (value == null || value === '') ? null : Number(value);
+			n.value = (value == null || value === '') ? '' : Number(value);
 			n.addEventListener('input', markDirty);
 			n.addEventListener('change', markDirty);
 			return { kind: 'int', el: n, min: min, max: max };
 		}
 
 		function enumControl(key, value, values) {
-			var sel = document.createElement('t-select');
+			var sel = document.createElement('select');
+			sel.className = 'nm-select';
 			var options = values.map(function(o) {
 				return { label: o[1], value: o[0] };
 			});
@@ -454,14 +461,21 @@ return view.extend({
 			}
 			if (!found && cur !== '')
 				options.push({ label: cur + ' ' + _('（当前）'), value: cur });
-			sel.options = options;
+			options.forEach(function(o) {
+				var opt = document.createElement('option');
+				opt.value = o.value;
+				opt.textContent = o.label;
+				sel.appendChild(opt);
+			});
 			sel.value = cur;
 			sel.addEventListener('change', markDirty);
 			return { kind: 'enum', el: sel };
 		}
 
 		function textControl(key, value) {
-			var i = document.createElement('t-input');
+			var i = document.createElement('input');
+			i.type = 'text';
+			i.className = 'nm-input';
 			i.value = (value == null ? '' : String(value));
 			i.addEventListener('input', markDirty);
 			i.addEventListener('change', markDirty);
@@ -519,7 +533,7 @@ return view.extend({
 		/* ---------------------------------------------------- 采集与保存 */
 		function valueOf(k) {
 			var c = controls[k];
-			if (c.kind === 'flag') return c.el.value ? '1' : '0';
+			if (c.kind === 'flag') return c.el.checked ? '1' : '0';
 			return String(c.el.value == null ? '' : c.el.value).trim();
 		}
 
@@ -652,9 +666,9 @@ return view.extend({
 				var raw = v[k];
 				var s = (raw == null) ? '' : String(raw);
 				if (c.kind === 'flag') {
-					c.el.value = (s === '1');
+					c.el.checked = (s === '1');
 				} else if (c.kind === 'int') {
-					c.el.value = (s === '') ? null : Number(s);
+					c.el.value = (s === '') ? '' : Number(s);
 				} else if (c.el.value !== s) {
 					c.el.value = s;
 				}

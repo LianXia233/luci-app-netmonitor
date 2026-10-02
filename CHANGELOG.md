@@ -31,6 +31,18 @@
   `Unable to fetch some archives`，exit 100）；且即便源可用，装上的也是 node 12，
   太老、`node --check` 认不得本项目前端用的现代 JS 语法，仍会误报。下载方案与
   系统包源解耦后，护栏恢复对 jsmin 类破坏的真实检出能力。
+- **TDesign 表单控件在受控模式下交互失效（开关 / 下拉 / 输入）**。基于 Omi 框架的
+  `t-switch` / `t-select` / `t-input` / `t-input-number` 在受控模式（通过 value
+  属性赋值）下实测：开关点击后状态不切换（`innerChecked` 未随 `receiveProps` 同步）、
+  下拉菜单无法打开（`state.innerPopupVisible` 未正确初始化、合成事件无法穿透
+  shadow DOM），七个视图页上的开关按钮与下拉菜单因此无法正常使用。修复：全部改为
+  原生 HTML 控件（`checkbox` / `select` / `number` / `text`），样式保留 TDesign
+  观感（`.nm-switch` 纯 CSS 滑块、`.nm-select` / `.nm-input` / `.nm-num-input`
+  统一样式），交互由浏览器原生保证，兼容 LuCI 全部目标浏览器。改造范围：
+  设置页（已先行）、目标管理页（表格 / 卡片启用开关、编辑弹窗表单）、实时页
+  （区域 / 状态筛选、关键字搜索）、延迟曲线页（时间范围、快捷筛选）、区域页
+  （时间范围）、历史页（时间范围 / 区域 / 目标筛选）。`t-dialog` / `t-button` /
+  `t-tag` / `t-alert` 等展示与动作组件不受受控模式缺陷影响，保留使用。
 
 
 ## [1.4.1] - 2026-10-03
