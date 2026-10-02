@@ -298,34 +298,33 @@ jobs:
           # 语句中间，直接破坏语法。已在 Makefile 里 LUCI_MINIFY_JS:=0 /
           # LUCI_MINIFY_CSS:=0 关掉，此步负责证明「关掉之后产物不再被破坏」。
 
-          # 校验对象用 build_dir 下的 ipkg-install/，**不解包 .ipk / .apk**。
+          # 校验对象：build_dir 下本包的 .pkgdir/<pkg>/ —— 即 OpenWrt 打包前
+          # 把文件铺开的目标目录，内容与包内一致，且**不需要任何解包工具**。
           #
-          # 前两版都栽在解包工具上：
-          #   v1 用 `ar x` 解 ipk —— SDK 容器里的 ar 认不得 opkg 的 ipk 格式
-          #       （file format not recognized，exit 1）；
-          #   v2 用 `apk extract` 解 apk —— OpenWrt SDK 是 buildroot，**不带
-          #       apk-tools**（apk 只装在目标设备上），直接 `apk: not found`
-          #       （exit 127）。
-          # 而 ipkg-install/ 是 OpenWrt 打包时把文件铺开的目标目录，内容与包
-          # 内一致，无需任何解包工具，也不依赖 apk/ar/tar 的具体实现。
-          # 路径含 target triple（x86_64_musl / aarch64_cortex-a53）随 SDK 变，
-          # 故用通配探测，绝不硬编码。
+          # 前三版都栽在「怎么把包解开」或「目录叫什么」上（务必读完再改）：
+          #   v1 `ar x` 解 ipk      -> ar 认不得 opkg 的 ipk 格式（exit 1）
+          #   v2 `apk extract` 解 apk -> SDK 是 buildroot，不带 apk-tools（exit 127）
+          #   v3 找 ipkg-install    -> 目录名不是 ipkg-install 而是 ipkg-<arch> /
+          #        apk-<arch>，且本包是 LUCI_PKGARCH:=all 的架构无关包，
+          #        根本不生成那两个目录（ls -d 回显为空，exit 1）
+          # 实测本包真实路径是
+          #   build_dir/target-<triple>/<pkg>/.pkgdir/<pkg>/
+          # 该目录在 ipk(24.10) 与 apk(25.12) 两种 SDK 下都存在，故统一用它。
+          # triple（x86_64_musl / aarch64_cortex-a53）随 SDK 变，用通配探测。
 
           SRC="$GITHUB_WORKSPACE/$NM_PKG"
 
           ROOT=""
-          for d in "$SDK_DIR"/build_dir/target-*/*/ipkg-install; do
-            [ -d "$d" ] || continue
-            case "$d" in
-              *"$NM_PKG"*) ROOT="$d"; break ;;
-            esac
+          for d in "$SDK_DIR"/build_dir/target-*/"$NM_PKG"/.pkgdir/"$NM_PKG"; do
+            [ -d "$d" ] && ROOT="$d" && break
           done
           if [ -z "$ROOT" ]; then
-            echo "::error::cannot locate ipkg-install dir for $NM_PKG under $SDK_DIR/build_dir"
-            ls -d "$SDK_DIR"/build_dir/target-*/*/ipkg-install 2>/dev/null | head -20 || true
+            echo "::error::cannot locate .pkgdir for $NM_PKG under $SDK_DIR/build_dir"
+            ls -d "$SDK_DIR"/build_dir/target-*/"$NM_PKG"/.pkgdir/* 2>/dev/null | head -20 || true
+            ls -d "$SDK_DIR"/build_dir/target-*/"$NM_PKG"/ 2>/dev/null | head -20 || true
             exit 1
           fi
-          echo "==> payload root: $ROOT"
+          echo "==> payload root: ${ROOT#$SDK_DIR/}"
 
           # 判定方式按文件类型分档，**不用体积比例**。
           #
@@ -339,9 +338,9 @@ jobs:
           #
           # 唯一能区分两者的判据是**语法**：正常压缩的产物仍能解析，被切断
           # 语句的不能。
-          #   .js              -> node --check 必须通过
+          #   .js                -> node --check 必须通过
           #   .json/.sh/无扩展名 -> 逐字节 sha256（实测 root/ 下 7/7 完全一致）
-          #   .css             -> 存在、非空、含规则块（csstidy 无语法可查）
+          #   .css               -> 存在、非空、含规则块（csstidy 无语法可查）
           #
           # 路径映射：htdocs/x -> $ROOT/www/x，root/x -> $ROOT/x。
           # 早先版本把两者都当 /www/ 处理，导致每次构建都在 root/ 首个文件上
