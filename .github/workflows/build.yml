@@ -285,21 +285,47 @@ jobs:
         shell: sh
         run: |
           set -eu
-          # SDK 容器（Alpine 基座）默认不带 node，而本护栏的 JS 语法校验依赖
+          # SDK 容器（Alpine/Debian 基座）默认不带 node，而本护栏的 JS 语法校验依赖
           # node --check。缺 node 时命令以 127 退出，护栏会把「找不到 node」
           # 误判成「JS 被破坏」报 INVALID JAVASCRIPT——1.4.1 的 CI 实测：
           # chart.js 与源码逐字节一致、本地 node --check 通过，仍被误报。
-          # 先在容器里装好 node 再校验；apk / apt 双兼容覆盖两种基座镜像。
+          #
+          # 不能用系统包管理器补装 node：openwrt/sdk 的 Debian 11 (bullseye) 基座
+          # 2026-08 已 EOL，deb.debian.org 撤下全部 bullseye 包，apt-get install
+          # nodejs 报 404（1.4.1 CI 实测 exit 100）；且就算源没死，装上的也是
+          # node 12——太老，node --check 认不得本项目前端用的现代 JS 语法，
+          # 仍会误报。这里直接从 nodejs.org 下载官方静态二进制，与系统包源解耦。
           if ! command -v node >/dev/null 2>&1; then
-            if command -v apk >/dev/null 2>&1; then
-              apk add --no-cache nodejs
-            elif command -v apt-get >/dev/null 2>&1; then
-              apt-get update -qq
-              apt-get install -y -qq nodejs
+            NODE_VERSION=v22.17.0
+            NODE_DL_ARCH=$(uname -m)
+            case "$NODE_DL_ARCH" in
+              x86_64)  NODE_DL_ARCH=x64 ;;
+              aarch64) NODE_DL_ARCH=arm64 ;;
+              *)
+                echo "::error::unsupported arch for node download: $NODE_DL_ARCH"
+                exit 1
+                ;;
+            esac
+            # Alpine(musl) 基座需用 musl 构建的 node；glibc 构建的在 Alpine 上跑不起来
+            if [ -f /etc/alpine-release ]; then
+              NODE_DL_ARCH="${NODE_DL_ARCH}-musl"
+            fi
+            NODE_TGZ="node-${NODE_VERSION}-linux-${NODE_DL_ARCH}.tar.gz"
+            NODE_URL="https://nodejs.org/dist/${NODE_VERSION}/${NODE_TGZ}"
+            NODE_TMP=$(mktemp -d)
+            echo "==> fetching $NODE_URL"
+            if command -v curl >/dev/null 2>&1; then
+              curl -fsSL "$NODE_URL" -o "$NODE_TMP/$NODE_TGZ"
+            elif command -v wget >/dev/null 2>&1; then
+              wget -q -O "$NODE_TMP/$NODE_TGZ" "$NODE_URL"
             else
-              echo "::error::node unavailable and no known package manager (apk/apt-get)"
+              echo "::error::neither curl nor wget available to fetch node"
               exit 1
             fi
+            tar -xzf "$NODE_TMP/$NODE_TGZ" -C "$NODE_TMP"
+            # 只需 node 本体进 PATH（node --check 不依赖 npm 的 node_modules）
+            cp -a "$NODE_TMP"/node-*/bin/node /usr/local/bin/
+            rm -rf "$NODE_TMP"
           fi
           node --version
           cd "$SDK_DIR"

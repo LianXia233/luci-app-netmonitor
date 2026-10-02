@@ -21,12 +21,16 @@
 - **CI「产物完整性护栏」把「容器缺 node」误判成「JS 被压缩破坏」**。
   护栏步骤（`.github/workflows/build.yml` 的 *Verify payload integrity against
   source*）用 `node --check` 校验打包产物里的每个 `.js` 文件，但 `openwrt/sdk`
-  容器（Alpine 基座）默认不装 node，命令以 `node: not found`（exit 127）退出，
-  护栏随即把第一个被检文件（`netmonitor/chart.js`）误报为
-  `INVALID JAVASCRIPT in payload` 并终止构建——实际上 chart.js 与源码逐字节
-  一致、语法完全合法。修复：护栏开头检测 `node` 是否存在，缺则用 `apk` 安装
-  `nodejs`（apt 兜底兼容 Debian 基座镜像），再执行校验；这样护栏恢复对
-  jsmin 类破坏的真实检出能力。
+  容器默认不装 node，命令以 `node: not found`（exit 127）退出，护栏随即把第一个
+  被检文件（`netmonitor/chart.js`）误报为 `INVALID JAVASCRIPT in payload` 并终止
+  构建——实际上 chart.js 与源码逐字节一致、语法完全合法。修复：护栏开头检测
+  `node` 是否存在，缺则直接从 nodejs.org 下载官方静态二进制放入
+  `/usr/local/bin`（架构按 `uname -m` 映射，Alpine/musl 基座自动改用 musl 构建），
+  再执行校验。不用系统包管理器补装：SDK 容器的 Debian 11 (bullseye) 基座
+  2026-08 已 EOL，软件源随之 404（1.4.1 CI 实测 `apt-get install nodejs` 报
+  `Unable to fetch some archives`，exit 100）；且即便源可用，装上的也是 node 12，
+  太老、`node --check` 认不得本项目前端用的现代 JS 语法，仍会误报。下载方案与
+  系统包源解耦后，护栏恢复对 jsmin 类破坏的真实检出能力。
 
 
 ## [1.4.1] - 2026-10-03
