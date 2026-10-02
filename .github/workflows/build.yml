@@ -298,125 +298,115 @@ jobs:
           # 语句中间，直接破坏语法。已在 Makefile 里 LUCI_MINIFY_JS:=0 /
           # LUCI_MINIFY_CSS:=0 关掉，此步负责证明「关掉之后产物不再被破坏」。
 
-          SRC="$GITHUB_WORKSPACE/$NM_PKG"
-          WORK=/tmp/payload-verify
-          rm -rf "$WORK"; mkdir -p "$WORK"
+          # 校验对象用 build_dir 下的 ipkg-install/，**不解包 .ipk / .apk**。
+          #
+          # 前两版都栽在解包工具上：
+          #   v1 用 `ar x` 解 ipk —— SDK 容器里的 ar 认不得 opkg 的 ipk 格式
+          #       （file format not recognized，exit 1）；
+          #   v2 用 `apk extract` 解 apk —— OpenWrt SDK 是 buildroot，**不带
+          #       apk-tools**（apk 只装在目标设备上），直接 `apk: not found`
+          #       （exit 127）。
+          # 而 ipkg-install/ 是 OpenWrt 打包时把文件铺开的目标目录，内容与包
+          # 内一致，无需任何解包工具，也不依赖 apk/ar/tar 的具体实现。
+          # 路径含 target triple（x86_64_musl / aarch64_cortex-a53）随 SDK 变，
+          # 故用通配探测，绝不硬编码。
 
-          main_pkg=$(find "$SDK_DIR/bin" -type f \( -name "$NM_PKG*.ipk" -o -name "$NM_PKG*.apk" \) \
-                     -not -name '*i18n*' 2>/dev/null | head -1)
-          if [ -z "$main_pkg" ]; then
-            echo "::error::main package not found under bin/"
+          SRC="$GITHUB_WORKSPACE/$NM_PKG"
+
+          ROOT=""
+          for d in "$SDK_DIR"/build_dir/target-*/*/ipkg-install; do
+            [ -d "$d" ] || continue
+            case "$d" in
+              *"$NM_PKG"*) ROOT="$d"; break ;;
+            esac
+          done
+          if [ -z "$ROOT" ]; then
+            echo "::error::cannot locate ipkg-install dir for $NM_PKG under $SDK_DIR/build_dir"
+            ls -d "$SDK_DIR"/build_dir/target-*/*/ipkg-install 2>/dev/null | head -20 || true
             exit 1
           fi
-          echo "==> verifying payload of: $main_pkg"
+          echo "==> payload root: $ROOT"
 
-          # ipk 是 ar 归档（内含 data.tar.gz）；apk(3.x) 是 ADB 格式，
-          # 由 SDK 容器内的 apk 工具解开最可靠。
-          case "$main_pkg" in
-            *.ipk)
-              ( cd "$WORK" && ar x "$main_pkg" )
-              if [ -f "$WORK/data.tar.gz" ]; then
-                mkdir -p "$WORK/x"; tar -xzf "$WORK/data.tar.gz" -C "$WORK/x"
-              elif [ -f "$WORK/data.tar" ]; then
-                mkdir -p "$WORK/x"; tar -xf "$WORK/data.tar" -C "$WORK/x"
-              else
-                echo "::error::cannot locate data tarball inside $main_pkg"
-                ls -la "$WORK"; exit 1
-              fi
-              ;;
-            *.apk)
-              mkdir -p "$WORK/x"
-              ( cd "$WORK/x" && apk extract --allow-untrusted "$main_pkg" )
-              ;;
-          esac
-          [ -d "$WORK/x" ] || { echo "::error::extraction produced no directory"; exit 1; }
-
-          # 判定方式按文件类型分三档，**不能用体积比例**。
+          # 判定方式按文件类型分档，**不用体积比例**。
           #
-          # 先说为什么不用比例：luci.mk 合法地重写 htdocs 下的 .js/.css（剥头部
-          # 注释、压行、改写 view/ 的头部），体积天然小很多。实测同一批文件里
+          # luci.mk 合法地重写 htdocs 下的 .js/.css（剥头部注释、压行、改写
+          # view/ 的头部），体积天然小很多。实测同一批文件里：
           #   common.js         25560 -> 15806  (61.9%，完全正常)
           #   tdesign.min.js  7385397 -> 6693761 (90.6%，语法已坏)
-          # 剥注释后 tdesign 理论值 91.3%，与损坏后的 90.6% 几乎重合 ——
-          # 任何固定百分比阈值都会在「正常压缩」与「真实损坏」之间二选一，
-          # 要么误报让 CI 永远红，要么漏报让坏产物发出去。
+          # 剥注释后 tdesign 理论值 91.3%，与损坏后的 90.6% 几乎重合 —— 任何
+          # 固定百分比阈值都会在「正常压缩」与「真实损坏」之间二选一：要么误报
+          # 让 CI 永远红，要么漏报让坏产物发出去。
           #
-          # 唯一能把两者分开的判据是**语法**：正常压缩产出的文件仍能解析，
-          # 1.4.0 那次被切坏的不能。故 .js 一律 node --check 语法校验。
+          # 唯一能区分两者的判据是**语法**：正常压缩的产物仍能解析，被切断
+          # 语句的不能。
+          #   .js              -> node --check 必须通过
+          #   .json/.sh/无扩展名 -> 逐字节 sha256（实测 root/ 下 7/7 完全一致）
+          #   .css             -> 存在、非空、含规则块（csstidy 无语法可查）
           #
-          #   .js            -> node --check 必须通过（能精准抓住 1.4.0 这类损坏）
-          #   .json / .sh /
-          #   无扩展名         -> 逐字节 sha256（实测 root/ 下 7/7 完全一致）
-          #   .css           -> 只校验存在且非空（csstidy 不改变语义，无语法可查）
-          #
-          # 注意 root/ 的路径映射：root/etc/x -> /etc/x（htdocs 才是 /www/ 前缀）。
-          # 早先版本把两者都当 /www/ 处理，直接导致每次构建都报 MISSING。
-          # 护栏自身必须先被验证是对的，否则形同虚设。
+          # 路径映射：htdocs/x -> $ROOT/www/x，root/x -> $ROOT/x。
+          # 早先版本把两者都当 /www/ 处理，导致每次构建都在 root/ 首个文件上
+          # 报 MISSING，护栏恒红、形同虚设。护栏自身必须先被验证是对的。
 
-          checked=0
+          jsn=0
+          strict=0
 
           # ---- 1) JavaScript：语法必须合法 ----
           for src in $(find "$SRC/htdocs" "$SRC/root" -type f -name '*.js' 2>/dev/null | sort); do
-            rel="${src#$SRC/}"
+            rel="${src#"$SRC/"}"
             case "$rel" in
-              htdocs/*) want="/www/${rel#htdocs/}" ;;
-              root/*)   want="/${rel#root/}" ;;
+              htdocs/*) want="$ROOT/www/${rel#htdocs/}" ;;
+              root/*)   want="$ROOT/${rel#root/}" ;;
               *) continue ;;
             esac
-            got="$WORK/x$want"
-            if [ ! -f "$got" ]; then
-              echo "::error::MISSING in package: $want (source: $src)"
+            if [ ! -f "$want" ]; then
+              echo "::error::MISSING in payload: ${want#$ROOT/} (source: $rel)"
               exit 1
             fi
-            if ! node --check "$got" >/dev/null 2>&1; then
-              echo "::error::INVALID JAVASCRIPT in package: $want"
+            if ! node --check "$want" >/dev/null 2>&1; then
+              echo "::error::INVALID JAVASCRIPT in payload: ${want#$ROOT/}"
               echo "::error::  node --check 失败 —— 该文件在打包中被破坏。"
               echo "::error::  1.4.0 的 tdesign.min.js 即是此症状（jsmin 切断语句）。"
               echo "::error::  检查 Makefile 里 LUCI_MINIFY_JS 是否仍为 1。"
-              node --check "$got" 2>&1 | head -5 || true
+              node --check "$want" 2>&1 | head -5 || true
               exit 1
             fi
-            checked=$((checked + 1))
+            jsn=$((jsn + 1))
           done
-          echo "==> JS syntax OK ($checked files)"
+          echo "==> JS syntax OK ($jsn files)"
 
-          # ---- 2) CSS / JSON / shell / 无扩展名：存在性 + 内容校验 ----
-          strict=0
+          # ---- 2) CSS / JSON / shell / 无扩展名 ----
           for src in $(find "$SRC/htdocs" "$SRC/root" -type f 2>/dev/null | sort); do
-            rel="${src#$SRC/}"
+            rel="${src#"$SRC/"}"
             case "$rel" in
-              htdocs/*) want="/www/${rel#htdocs/}" ;;
-              root/*)   want="/${rel#root/}" ;;
+              htdocs/*) want="$ROOT/www/${rel#htdocs/}" ;;
+              root/*)   want="$ROOT/${rel#root/}" ;;
               *) continue ;;
             esac
             case "$want" in
               *.js|*.ipk|*.apk|*.gz) continue ;;
             esac
-            got="$WORK/x$want"
-            if [ ! -f "$got" ]; then
-              echo "::error::MISSING in package: $want (source: $src)"
+            if [ ! -f "$want" ]; then
+              echo "::error::MISSING in payload: ${want#$ROOT/} (source: $rel)"
               exit 1
             fi
-            if [ ! -s "$got" ]; then
-              echo "::error::EMPTY in package: $want"
+            if [ ! -s "$want" ]; then
+              echo "::error::EMPTY in payload: ${want#$ROOT/}"
               exit 1
             fi
-            case "$got" in
+            case "$want" in
               *.css)
-                # csstidy 会重排 css，无法逐字节比；只要求非空且保留主要选择器
-                if ! grep -q '{' "$got"; then
-                  echo "::error::CSS LOOKS BROKEN in package: $want (no rule block)"
+                if ! grep -q '{' "$want"; then
+                  echo "::error::CSS LOOKS BROKEN in payload: ${want#$ROOT/} (no rule block)"
                   exit 1
                 fi
                 ;;
               *)
-                # json / sh / 无扩展名：luci.mk 原样打包，必须逐字节一致
                 a=$(sha256sum "$src" | cut -d' ' -f1)
-                b=$(sha256sum "$got" | cut -d' ' -f1)
+                b=$(sha256sum "$want" | cut -d' ' -f1)
                 if [ "$a" != "$b" ]; then
-                  echo "::error::CONTENT MISMATCH: $want"
+                  echo "::error::CONTENT MISMATCH: ${want#$ROOT/}"
                   echo "::error::  source  : $a ($(wc -c < "$src") bytes)"
-                  echo "::error::  package : $b ($(wc -c < "$got") bytes)"
+                  echo "::error::  payload : $b ($(wc -c < "$want") bytes)"
                   exit 1
                 fi
                 strict=$((strict + 1))
