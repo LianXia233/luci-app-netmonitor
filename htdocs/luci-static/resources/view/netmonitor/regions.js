@@ -157,7 +157,10 @@ return view.extend({
 			var tbody = common.el('tbody', '');
 			var tr = common.el('tr', '');
 			[_('Name'), _('Current'), _('Average'), _('P95'), _('Loss'), _('Availability')].forEach(function(h) {
-				tr.appendChild(common.el('th', '', h));
+				var th = common.el('th', '', h);
+				/* scope 让读屏逐格导航时播报列名 */
+				th.setAttribute('scope', 'col');
+				tr.appendChild(th);
 			});
 			thead.appendChild(tr);
 			tb.appendChild(thead);

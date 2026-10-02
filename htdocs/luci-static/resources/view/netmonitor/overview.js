@@ -359,11 +359,17 @@ return view.extend({
 			actRow.style.display = 'flex';
 			actRow.style.gap = '10px';
 
-			function btn(label, fn, isPrimary) {
+			/* 服务控制按钮：按当前运行态禁用无意义的操作 ——
+			 * 服务已在运行时「启动」无事可做，已停止时「停止」同理。
+			 * 保留 Restart 始终可用（两种状态下都有意义）。
+			 * 每次 renderFoot 重绘时重新计算，因此状态变化后按钮态
+			 * 会自动跟上，不需要额外的状态同步代码。 */
+			function btn(label, fn, isPrimary, disabled) {
 				var b = document.createElement('t-button');
 				b.setAttribute('theme', isPrimary ? 'primary' : 'default');
 				if (!isPrimary) b.setAttribute('variant', 'outline');
 				b.textContent = label;
+				if (disabled) b.setAttribute('disabled', '');
 				b.addEventListener('click', function() {
 					b.setAttribute('disabled', '');
 					fn().then(function() {
@@ -376,9 +382,9 @@ return view.extend({
 				return b;
 			}
 
-			actRow.appendChild(btn(_('Start'), common.api.startService, true));
-			actRow.appendChild(btn(_('Stop'), common.api.stopService, false));
-			actRow.appendChild(btn(_('Restart'), common.api.restartService, false));
+			actRow.appendChild(btn(_('Start'), common.api.startService, true, d.running));
+			actRow.appendChild(btn(_('Stop'), common.api.stopService, false, !d.running));
+			actRow.appendChild(btn(_('Restart'), common.api.restartService, false, false));
 			foot.appendChild(actRow);
 		}
 
