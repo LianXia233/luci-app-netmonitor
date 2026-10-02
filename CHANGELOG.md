@@ -16,7 +16,17 @@
 
 ## [Unreleased]
 
-（暂无内容）
+### 修复
+
+- **CI「产物完整性护栏」把「容器缺 node」误判成「JS 被压缩破坏」**。
+  护栏步骤（`.github/workflows/build.yml` 的 *Verify payload integrity against
+  source*）用 `node --check` 校验打包产物里的每个 `.js` 文件，但 `openwrt/sdk`
+  容器（Alpine 基座）默认不装 node，命令以 `node: not found`（exit 127）退出，
+  护栏随即把第一个被检文件（`netmonitor/chart.js`）误报为
+  `INVALID JAVASCRIPT in payload` 并终止构建——实际上 chart.js 与源码逐字节
+  一致、语法完全合法。修复：护栏开头检测 `node` 是否存在，缺则用 `apk` 安装
+  `nodejs`（apt 兜底兼容 Debian 基座镜像），再执行校验；这样护栏恢复对
+  jsmin 类破坏的真实检出能力。
 
 
 ## [1.4.1] - 2026-10-03
