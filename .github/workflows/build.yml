@@ -1,0 +1,514 @@
+name: Build luci-app-netmonitor
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# 注意：这里绝不能使用 PKG_NAME 作为变量名。
+# OpenWrt 的包元数据扫描链路会把环境变量 PKG_NAME 传进每个包的 DUMP 子 make，
+# 而 luci.mk 用 `PKG_NAME?=$(LUCI_NAME)` 推导包名——make 视环境变量为已定义，
+# `?=` 不会覆盖，结果整个 luci feed 的包名都被钉成同一个值，
+# Kconfig 出现上百个包共用一个 symbol，编译目标彻底消失。
+env:
+  NM_PKG: luci-app-netmonitor
+
+jobs:
+  checks:
+    # 编译前的静态检查与单元测试。之所以让 build 依赖本作业，是因为这几项
+    # 都对应过真实事故，且失败时产物本身能编出来、只是装上不能用：
+    #
+    #   * 可执行位——本仓库在 Windows 上开发，git 默认 core.filemode=false，
+    #     文件模式根本不被追踪，导致 init.d / 守护进程脚本被记为 100644。
+    #     OpenWrt 打包用 cp -fpR 保留源文件模式，装到设备上就是不可执行的
+    #     init 脚本，服务直接起不来。索引里的模式必须逐次核对。
+    #   * 翻译完整性——后端 rpcd 的 ucode 插件没有 i18n 运行时，只能返回
+    #     英文原文，须在 common.js 的映射表里登记；漏登记就静默透英文。
+    #   * 单元测试——守护进程的探测解析、字段对齐、TCP 判定等逻辑。
+    name: Static checks and unit tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.NM_PKG }}
+
+      - name: Verify executable bits
+        shell: sh
+        run: |
+          set -eu
+          cd "$GITHUB_WORKSPACE/$NM_PKG"
+          # 必须可执行的文件：带 shebang 且要被内核直接 exec 的脚本。
+          # 值取自 git 索引（而非工作区），因为最终入库的是索引里的模式。
+          fail=0
+          for f in \
+            root/etc/init.d/netmonitor \
+            root/etc/uci-defaults/luci-app-netmonitor \
+            root/usr/libexec/netmonitor/netmon-daemon.sh \
+            tests/test_netmon_daemon.sh \
+            tests/test_icons.js \
+            po/gen_po.py
+          do
+            mode=$(git ls-files -s "$f" | awk '{print $1}')
+            if [ "$mode" != "100755" ]; then
+              echo "::error file=$f::expected mode 100755 but git records ${mode:-missing} (run: git update-index --chmod=+x $f)"
+              fail=1
+            else
+              echo "ok  $mode  $f"
+            fi
+          done
+          [ "$fail" = "0" ] || exit 1
+
+      - name: Verify translation completeness
+        shell: sh
+        run: |
+          set -eu
+          cd "$GITHUB_WORKSPACE/$NM_PKG"
+          out=$(python3 po/gen_po.py)
+          echo "$out"
+          # untranslated 必须为 0：任何新增的 _('...') 都要同时补中文
+          echo "$out" | grep -q 'untranslated: 0' || {
+            echo "::error::po 存在未翻译条目（见上方 MISSING 列表）"
+            exit 1
+          }
+          # 后端 err() 字面量必须都已登记进 common.js 的映射表
+          if echo "$out" | grep -q 'UNREGISTERED backend error'; then
+            echo "::error::后端存在未登记的 err() 文案，会以英文原样透出"
+            exit 1
+          fi
+          # ZH 映射表里的重复键：后者覆盖前者，被覆盖的那条翻译静默失效
+          # （实测踩过：页签「目标管理」被总览段遗留的「目标数」顶掉）
+          if echo "$out" | grep -q 'DUPLICATE ZH key'; then
+            echo "::error::po 中文映射表存在重复键，被覆盖的翻译不会生效"
+            exit 1
+          fi
+          # 与核心语言包同名却不同译：核心覆盖插件，界面上看到的不是本插件写的词
+          # （实测踩过：目标管理页表头 _('Label') 显示成核心的「卷标」）
+          if echo "$out" | grep -q 'CORE COLLISION MISMATCH'; then
+            echo "::error::存在与核心语言包同名但不同译的 msgid（见 po/core_msgids.txt）"
+            exit 1
+          fi
+          # 生成结果必须与入库文件一致，避免「改了源码忘了重新生成 po」
+          git diff --exit-code -- po/ || {
+            echo "::error::po/ 与源码不一致，请在本地执行 python3 po/gen_po.py 后提交"
+            exit 1
+          }
+
+      - name: Run daemon unit tests
+        shell: sh
+        run: |
+          set -eu
+          cd "$GITHUB_WORKSPACE/$NM_PKG"
+          # 用 bash 跑：脚本按 POSIX sh 编写并在 busybox ash 上验证过，
+          # ubuntu 的 /bin/sh 是 dash，用 bash 更贴近开发机与设备的实际行为。
+          # 注意不能靠管道退出码判定（`cmd | tail` 取的是 tail 的状态），
+          # 所以落盘后解析汇总行。
+          bash tests/test_netmon_daemon.sh > /tmp/daemon-test.log 2>&1 || true
+          tail -40 /tmp/daemon-test.log
+          grep -qE '失败 0, 跳过 0' /tmp/daemon-test.log || {
+            echo "::error::守护进程单元测试未全部通过"
+            exit 1
+          }
+          grep -E '^通过 [0-9]+, 失败' /tmp/daemon-test.log
+
+      - name: Run icon and view assertions
+        shell: sh
+        run: |
+          set -eu
+          cd "$GITHUB_WORKSPACE/$NM_PKG"
+          node tests/test_icons.js
+
+  build:
+    name: ${{ matrix.format }} @ ${{ matrix.sdk }}
+    needs: checks
+    runs-on: ubuntu-latest
+    container:
+      # 官方 SDK 容器。本包 LUCI_PKGARCH=all，用 x86-64 SDK 编出的产物
+      # 可直接安装到任意架构的设备。
+      image: openwrt/sdk:${{ matrix.sdk }}
+      options: --user root
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 24.10 系列使用 opkg，产物为 .ipk
+          - sdk: x86-64-24.10.8
+            format: ipk
+          # 25.12 系列使用 apk，产物为 .apk
+          - sdk: x86-64-25.12.5
+            format: apk
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.NM_PKG }}
+
+      - name: Locate SDK and prepare package
+        shell: sh
+        run: |
+          set -eu
+          # 不同版本的官方镜像里 SDK 根目录位置不完全一致，这里统一探测
+          SDK_DIR=""
+          for d in /builder /home/build/openwrt /openwrt /sdk /root/openwrt; do
+            if [ -x "$d/scripts/feeds" ]; then SDK_DIR="$d"; break; fi
+          done
+          if [ -z "$SDK_DIR" ]; then
+            echo "::error::cannot locate OpenWrt SDK (scripts/feeds not found)"
+            ls -la /
+            exit 1
+          fi
+          # PKG_NAME 是 OpenWrt 元数据扫描链路的敏感变量，见文件头注释
+          unset PKG_NAME || true
+          echo "SDK_DIR=$SDK_DIR" >> "$GITHUB_ENV"
+          echo "SDK located at: $SDK_DIR"
+
+          mkdir -p "$SDK_DIR/package"
+          rm -rf "$SDK_DIR/package/$NM_PKG"
+          cp -r "$GITHUB_WORKSPACE/$NM_PKG" "$SDK_DIR/package/$NM_PKG"
+
+          # 源码里带的排障工作区不参与打包
+          rm -rf "$SDK_DIR/package/$NM_PKG/tests/.tmp"
+
+      - name: Update feeds and install LuCI dependencies
+        shell: sh
+        run: |
+          set -eu
+          cd "$SDK_DIR"
+          ./scripts/feeds update -a
+
+          # 只安装 luci feed：本包依赖全部落在 luci feed 与 SDK 自带组件内。
+          # 不引入 packages feed 可缩小元数据解析面、缩短 defconfig 时间，
+          # 同时避免无关包的 Kconfig 噪音干扰诊断输出。
+          ./scripts/feeds install -a -p luci
+
+          echo "==> installed feeds:"
+          ls package/feeds/ 2>/dev/null || true
+          echo "==> attendedsysupgrade 相关包是否仍在引入范围:"
+          find package feeds -maxdepth 5 -name '*attendedsysupgrade*' -print 2>/dev/null || echo "    (none)"
+
+      - name: Configure
+        shell: sh
+        run: |
+          cd "$SDK_DIR"
+
+          # defconfig 输出保留，用于判定 Kconfig 是否报递归依赖。
+          # 注意：Config-build.in / Config.in 属于 Kconfig 输入，任何情况下都不能删除，
+          # 删掉会导致后续报 `Config.in:153: glob failed: No files found "Config-build.in"`。
+          set +e
+          make defconfig 2>&1 | tee /tmp/defconfig.log
+          set -e
+
+          if grep -q 'recursive dependency detected' /tmp/defconfig.log; then
+            echo "::warning::Kconfig recursive dependency detected, retrying with a clean tmp state"
+            grep -n 'recursive dependency\|depends on PACKAGE\|is selected by' /tmp/defconfig.log | head -10 || true
+
+            # 只清理可再生的生成物（tmp/ 下的索引与 Kconfig 产物）
+            rm -f tmp/.packageinfo tmp/.packagedeps tmp/.config-package.in tmp/.config-target.in
+
+            set +e
+            make defconfig 2>&1 | tee /tmp/defconfig.log
+            set -e
+          fi
+
+          echo "===== 诊断：包索引中的 netmonitor 条目 ====="
+          echo "Package 行数: $(grep -c '^Package: luci-app-netmonitor$' tmp/.packageinfo 2>/dev/null || echo NA)"
+          echo "----- .packageinfo 前 8 个 Package 行 -----"
+          grep -n '^Package: ' tmp/.packageinfo 2>/dev/null | head -8 || true
+          echo "----- 本包条目的上下文 -----"
+          grep -n -A4 '^Package: luci-app-netmonitor$' tmp/.packageinfo 2>/dev/null | head -20 || true
+          echo "===== 诊断：生成的 Kconfig ====="
+          echo "config PACKAGE_luci-app-netmonitor 出现次数: $(grep -c 'config PACKAGE_luci-app-netmonitor$' tmp/.config-package.in 2>/dev/null || echo NA)"
+          echo "----- tmp/.config-package.in 第 47300-47320 行原文 -----"
+          sed -n '47300,47320p' tmp/.config-package.in 2>/dev/null || true
+          echo "----- 引用 attendedsysupgrade-common 的行 -----"
+          grep -n 'attendedsysupgrade-common' tmp/.config-package.in 2>/dev/null | head -10 || true
+          echo "===== 诊断结束 ====="
+
+          # 显式启用本包（conf 成功写出时该行已存在，此处仅作保证）
+          sed -i '/^CONFIG_PACKAGE_luci-app-netmonitor=/d' .config 2>/dev/null || true
+          echo 'CONFIG_PACKAGE_luci-app-netmonitor=y' >> .config
+
+          # 不要单独启用/编译 i18n 子包：luci.mk 的 LuciTranslation 在编译主包时
+          # 会顺带构建本包衍生的所有 i18n 包（luci-i18n-<basename>-<lang>，本包即
+          # luci-i18n-netmonitor-zh-cn），但它**不会**为这些 i18n 子包注册独立的
+          # package/luci-i18n-*/compile 目标。即便在 .config 写
+          # CONFIG_PACKAGE_luci-i18n-netmonitor-zh-cn=y，`make package/<i18n>/compile`
+          # 仍报 "No rule to make target"（8982168 之后的 CI 实证：i18n 的 .ipk/.apk
+          # 由主包编译产出，单独编译目标永不生成）。因此 i18n 的产出校验放到 Build
+          # 步骤（确认 bin/ 下确有对应 .ipk/.apk），而不是试图单独编译它。
+
+          echo "target symbols: $(grep -c '^CONFIG_TARGET_' .config 2>/dev/null || echo 0)"
+
+      - name: Build package and translations
+        shell: sh
+        run: |
+          set -eu
+          cd "$SDK_DIR"
+
+          # Kconfig 未收敛时包索引不会生成，这里给出可定位的失败信息
+          if [ ! -f tmp/.packageinfo ]; then
+            echo "::error::tmp/.packageinfo missing - Kconfig did not converge"
+            echo "----- .config head -----"
+            sed -n '1,40p' .config 2>/dev/null || true
+            exit 1
+          fi
+          echo "==> packageinfo entries for luci-app-netmonitor: $(grep -c '^Package: luci-app-netmonitor$' tmp/.packageinfo || true)"
+
+          make package/$NM_PKG/compile V=s
+
+          # i18n 翻译包由主包编译（luci.mk 的 LuciTranslation）顺带产出，luci.mk
+          # 不会为 i18n 子包注册独立的 package/luci-i18n-*/compile 目标——
+          # 直接 make 该目标必然 "No rule to make target"（8982168 之后的 CI 实证），
+          # 故这里不单独编译。改为存在性校验：确认 tmp/.packageinfo 中扫描到的每个
+          # i18n 包，都在 bin/ 下产出了对应 .ipk/.apk（apk 文件名用短横、ipk 用下划线
+          # 分隔版本号，故两种命名一并匹配）。一旦未来 luci.mk 不再顺带构建 i18n，
+          # 此步会立即以 ::error 暴露，而不是静默丢包。i18n 包名从 .packageinfo 推导，绝不手算。
+          for i18n in $(grep -oE '^Package: luci-i18n-netmonitor-[A-Za-z0-9._-]+$' tmp/.packageinfo 2>/dev/null | sed 's/^Package: //'); do
+            [ -z "$i18n" ] && continue
+            found=$(find bin -type f \( -name "${i18n}*.ipk" -o -name "${i18n}*.apk" \) 2>/dev/null | head -1)
+            if [ -z "$found" ]; then
+              echo "::error::translation package $i18n was scanned but no built artifact found under bin/"
+              exit 1
+            fi
+            echo "==> i18n artifact present: $found"
+          done
+
+      - name: Verify payload integrity against source
+        shell: sh
+        run: |
+          set -eu
+          # SDK 容器（Alpine/Debian 基座）默认不带 node，而本护栏的 JS 语法校验依赖
+          # node --check。缺 node 时命令以 127 退出，护栏会把「找不到 node」
+          # 误判成「JS 被破坏」报 INVALID JAVASCRIPT——1.4.1 的 CI 实测：
+          # chart.js 与源码逐字节一致、本地 node --check 通过，仍被误报。
+          #
+          # 不能用系统包管理器补装 node：openwrt/sdk 的 Debian 11 (bullseye) 基座
+          # 2026-08 已 EOL，deb.debian.org 撤下全部 bullseye 包，apt-get install
+          # nodejs 报 404（1.4.1 CI 实测 exit 100）；且就算源没死，装上的也是
+          # node 12——太老，node --check 认不得本项目前端用的现代 JS 语法，
+          # 仍会误报。这里直接从 nodejs.org 下载官方静态二进制，与系统包源解耦。
+          if ! command -v node >/dev/null 2>&1; then
+            NODE_VERSION=v22.17.0
+            NODE_DL_ARCH=$(uname -m)
+            case "$NODE_DL_ARCH" in
+              x86_64)  NODE_DL_ARCH=x64 ;;
+              aarch64) NODE_DL_ARCH=arm64 ;;
+              *)
+                echo "::error::unsupported arch for node download: $NODE_DL_ARCH"
+                exit 1
+                ;;
+            esac
+            # Alpine(musl) 基座需用 musl 构建的 node；glibc 构建的在 Alpine 上跑不起来
+            if [ -f /etc/alpine-release ]; then
+              NODE_DL_ARCH="${NODE_DL_ARCH}-musl"
+            fi
+            NODE_TGZ="node-${NODE_VERSION}-linux-${NODE_DL_ARCH}.tar.gz"
+            NODE_URL="https://nodejs.org/dist/${NODE_VERSION}/${NODE_TGZ}"
+            NODE_TMP=$(mktemp -d)
+            echo "==> fetching $NODE_URL"
+            if command -v curl >/dev/null 2>&1; then
+              curl -fsSL "$NODE_URL" -o "$NODE_TMP/$NODE_TGZ"
+            elif command -v wget >/dev/null 2>&1; then
+              wget -q -O "$NODE_TMP/$NODE_TGZ" "$NODE_URL"
+            else
+              echo "::error::neither curl nor wget available to fetch node"
+              exit 1
+            fi
+            tar -xzf "$NODE_TMP/$NODE_TGZ" -C "$NODE_TMP"
+            # 只需 node 本体进 PATH（node --check 不依赖 npm 的 node_modules）
+            cp -a "$NODE_TMP"/node-*/bin/node /usr/local/bin/
+            rm -rf "$NODE_TMP"
+          fi
+          node --version
+          cd "$SDK_DIR"
+
+          # 1.4.0 踩过的坑（务必保留这道护栏）：产物能编出来、CI 全绿、页面框架
+          # 与响应式布局都正常，但随包分发的 7 MB tdesign.min.js 被 jsmin 压坏，
+          # 浏览器抛 SyntaxError、window.TDesign 未定义——而 DOM 里 t-button/t-tag
+          # 标签照样存在，只是没有样式与行为，肉眼与页面截图都很难第一时间发现。
+          #
+          # 根因：luci.mk 的 LUCI_MINIFY_JS / LUCI_MINIFY_CSS 默认 ?=1，会对每个
+          # .js/.css 跑 jsmin / csstidy。该工具处理第三方 UMD bundle（28 行、含
+          # /*! */ 许可证注释）时把文件压成 3 行、删掉 691636 字节，删除点落在
+          # 语句中间，直接破坏语法。
+          #
+          # 1.5.0 起该 UMD 已整体移除（改为自建原生组件层 ui.js，见 CHANGELOG），
+          # Makefile 随之恢复 LUCI_MINIFY_JS / LUCI_MINIFY_CSS := 1。这道护栏
+          # 因此从「证明关掉压缩后产物不被破坏」变成「持续验证压缩本身安全」——
+          # 删掉它等于放弃对 jsmin 类破坏的检出能力，仍需保留。
+
+          # 校验对象：build_dir 下本包的 .pkgdir/<pkg>/ —— 即 OpenWrt 打包前
+          # 把文件铺开的目标目录，内容与包内一致，且**不需要任何解包工具**。
+          #
+          # 前三版都栽在「怎么把包解开」或「目录叫什么」上（务必读完再改）：
+          #   v1 `ar x` 解 ipk      -> ar 认不得 opkg 的 ipk 格式（exit 1）
+          #   v2 `apk extract` 解 apk -> SDK 是 buildroot，不带 apk-tools（exit 127）
+          #   v3 找 ipkg-install    -> 目录名不是 ipkg-install 而是 ipkg-<arch> /
+          #        apk-<arch>，且本包是 LUCI_PKGARCH:=all 的架构无关包，
+          #        根本不生成那两个目录（ls -d 回显为空，exit 1）
+          # 实测本包真实路径是
+          #   build_dir/target-<triple>/<pkg>/.pkgdir/<pkg>/
+          # 该目录在 ipk(24.10) 与 apk(25.12) 两种 SDK 下都存在，故统一用它。
+          # triple（x86_64_musl / aarch64_cortex-a53）随 SDK 变，用通配探测。
+
+          SRC="$GITHUB_WORKSPACE/$NM_PKG"
+
+          ROOT=""
+          for d in "$SDK_DIR"/build_dir/target-*/"$NM_PKG"/.pkgdir/"$NM_PKG"; do
+            [ -d "$d" ] && ROOT="$d" && break
+          done
+          if [ -z "$ROOT" ]; then
+            echo "::error::cannot locate .pkgdir for $NM_PKG under $SDK_DIR/build_dir"
+            ls -d "$SDK_DIR"/build_dir/target-*/"$NM_PKG"/.pkgdir/* 2>/dev/null | head -20 || true
+            ls -d "$SDK_DIR"/build_dir/target-*/"$NM_PKG"/ 2>/dev/null | head -20 || true
+            exit 1
+          fi
+          echo "==> payload root: ${ROOT#$SDK_DIR/}"
+
+          # 判定方式按文件类型分档，**不用体积比例**。
+          #
+          # luci.mk 合法地重写 htdocs 下的 .js/.css（剥头部注释、压行、改写
+          # view/ 的头部），体积天然小很多。实测同一批文件里：
+          #   common.js         25560 -> 15806  (61.9%，完全正常)
+          #   tdesign.min.js  7385397 -> 6693761 (90.6%，语法已坏)
+          # 剥注释后 tdesign 理论值 91.3%，与损坏后的 90.6% 几乎重合 —— 任何
+          # 固定百分比阈值都会在「正常压缩」与「真实损坏」之间二选一：要么误报
+          # 让 CI 永远红，要么漏报让坏产物发出去。
+          # （上例保留为历史记录：tdesign 已于1.5.0 移除，但这条结论本身
+          #   —— 体积比例无法区分「正常压缩」与「语法损坏」—— 依然成立。）
+          #
+          # 唯一能区分两者的判据是**语法**：正常压缩的产物仍能解析，被切断
+          # 语句的不能。
+          #   .js                -> node --check 必须通过
+          #   .json/.sh/无扩展名 -> 逐字节 sha256（实测 root/ 下 7/7 完全一致）
+          #   .css               -> 存在、非空、含规则块（csstidy 无语法可查）
+          #
+          # 路径映射：htdocs/x -> $ROOT/www/x，root/x -> $ROOT/x。
+          # 早先版本把两者都当 /www/ 处理，导致每次构建都在 root/ 首个文件上
+          # 报 MISSING，护栏恒红、形同虚设。护栏自身必须先被验证是对的。
+
+          jsn=0
+          strict=0
+
+          # ---- 1) JavaScript：语法必须合法 ----
+          for src in $(find "$SRC/htdocs" "$SRC/root" -type f -name '*.js' 2>/dev/null | sort); do
+            rel="${src#"$SRC/"}"
+            case "$rel" in
+              htdocs/*) want="$ROOT/www/${rel#htdocs/}" ;;
+              root/*)   want="$ROOT/${rel#root/}" ;;
+              *) continue ;;
+            esac
+            if [ ! -f "$want" ]; then
+              echo "::error::MISSING in payload: ${want#$ROOT/} (source: $rel)"
+              exit 1
+            fi
+            if ! node --check "$want" >/dev/null 2>&1; then
+              echo "::error::INVALID JAVASCRIPT in payload: ${want#$ROOT/}"
+              echo "::error::  node --check 失败 —— 该文件在打包中被 jsmin 破坏。"
+              echo "::error::  历史案例：1.4.0 的 tdesign.min.js（第三方 UMD bundle）。"
+              echo "::error::  根因是 jsmin 处理超长行/ 许可证注释时切断语句。"
+              echo "::error::  若确认源码本身合法，考虑临时在 Makefile 里设"
+              echo "::error::  LUCI_MINIFY_JS:=0 并重新构建。"
+              node --check "$want" 2>&1 | head -5 || true
+              exit 1
+            fi
+            jsn=$((jsn + 1))
+          done
+          echo "==> JS syntax OK ($jsn files)"
+
+          # ---- 2) CSS / JSON / shell / 无扩展名 ----
+          for src in $(find "$SRC/htdocs" "$SRC/root" -type f 2>/dev/null | sort); do
+            rel="${src#"$SRC/"}"
+            case "$rel" in
+              htdocs/*) want="$ROOT/www/${rel#htdocs/}" ;;
+              root/*)   want="$ROOT/${rel#root/}" ;;
+              *) continue ;;
+            esac
+            case "$want" in
+              *.js|*.ipk|*.apk|*.gz) continue ;;
+            esac
+            if [ ! -f "$want" ]; then
+              echo "::error::MISSING in payload: ${want#$ROOT/} (source: $rel)"
+              exit 1
+            fi
+            if [ ! -s "$want" ]; then
+              echo "::error::EMPTY in payload: ${want#$ROOT/}"
+              exit 1
+            fi
+            case "$want" in
+              *.css)
+                if ! grep -q '{' "$want"; then
+                  echo "::error::CSS LOOKS BROKEN in payload: ${want#$ROOT/} (no rule block)"
+                  exit 1
+                fi
+                ;;
+              *)
+                a=$(sha256sum "$src" | cut -d' ' -f1)
+                b=$(sha256sum "$want" | cut -d' ' -f1)
+                if [ "$a" != "$b" ]; then
+                  echo "::error::CONTENT MISMATCH: ${want#$ROOT/}"
+                  echo "::error::  source  : $a ($(wc -c < "$src") bytes)"
+                  echo "::error::  payload : $b ($(wc -c < "$want") bytes)"
+                  exit 1
+                fi
+                strict=$((strict + 1))
+                ;;
+            esac
+          done
+          echo "==> byte-identical files OK ($strict files)"
+          echo "==> payload integrity OK"
+
+      - name: Collect artifacts
+        id: collect
+        shell: sh
+        run: |
+          set -eu
+          cd "$SDK_DIR"
+          DIST="$GITHUB_WORKSPACE/dist-${{ matrix.format }}"
+          mkdir -p "$DIST"
+          found=0
+          for f in $(find bin -type f \( -name '*.ipk' -o -name '*.apk' \) \
+                     -name '*netmonitor*' 2>/dev/null); do
+            cp "$f" "$DIST/"
+            found=1
+          done
+          if [ "$found" = "0" ]; then
+            echo "::error::no packages produced"
+            find bin -maxdepth 4 -type d | head -20
+            exit 1
+          fi
+          echo "==> packages:"
+          ls -la "$DIST"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NM_PKG }}-${{ matrix.format }}
+          path: dist-${{ matrix.format }}/*
+          if-no-files-found: error
+
+      - name: Upload release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-${{ matrix.format }}/*
+          generate_release_notes: true
+
+  summary:
+    name: Build summary
+    runs-on: ubuntu-latest
+    needs: build
+    if: always()
+    steps:
+      - name: Report
+        run: |
+          echo "ipk job : ${{ needs.build.result }}"
+          echo "artifacts: luci-app-netmonitor-ipk / luci-app-netmonitor-apk"

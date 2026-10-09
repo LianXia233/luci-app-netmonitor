@@ -1,0 +1,23 @@
+# 入库归一为 LF、检出也是 LF。
+# OpenWrt 的 shell 是 BusyBox ash，CRLF 会让 \r 成为脚本内容的一部分，
+# 导致 procd 启动失败或命令解析异常。
+* text=auto eol=lf
+
+# 二进制文件不做行尾转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.ipk binary
+*.gz binary
+*.tgz binary
+*.zip binary
+*.lmo binary
+
+# 需要保留可执行位
+*.sh text eol=lf
+tests/*.sh text eol=lf

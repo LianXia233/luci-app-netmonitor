@@ -1,0 +1,577 @@
+# luci-app-netmonitor translation file
+# Copyright (C) 2026 netmonitor contributors
+# This file is distributed under the same license as the luci-app-netmonitor package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: luci-app-netmonitor 1.2.0\n"
+"Language: zh_Hans\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: po/gen_po.py\n"
+
+
+msgid "Never checked"
+msgstr "从未检测"
+
+msgid "Just now"
+msgstr "刚刚"
+
+msgid "%d seconds ago"
+msgstr "%d 秒前"
+
+msgid "%d minutes ago"
+msgstr "%d 分钟前"
+
+msgid "%d hours ago"
+msgstr "%d 小时前"
+
+msgid "%d days ago"
+msgstr "%d 天前"
+
+msgid "China"
+msgstr "国内"
+
+msgid "Overseas"
+msgstr "国外"
+
+msgid "Other"
+msgstr "其他"
+
+msgid "Timeout"
+msgstr "超时"
+
+msgid "DNS resolve failed"
+msgstr "DNS 解析失败"
+
+msgid "Network unreachable"
+msgstr "网络不可达"
+
+msgid "Invalid target"
+msgstr "目标无效"
+
+msgid "Check failed"
+msgstr "检测失败"
+
+msgid "Loss"
+msgstr "丢包"
+
+msgid "Availability"
+msgstr "在线率"
+
+msgid "Avg"
+msgstr "平均"
+
+msgid "P95"
+msgstr "P95"
+
+msgid "Icon"
+msgstr "图标"
+
+msgid "Status"
+msgstr "状态"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Confirm"
+msgstr "确认"
+
+msgid "OK"
+msgstr "确定"
+
+msgid "Time range"
+msgstr "时间范围"
+
+msgid "All targets"
+msgstr "所有目标"
+
+msgid "Quick filter"
+msgstr "快速筛选"
+
+msgid "No target selected"
+msgstr "未选择目标"
+
+msgid "Current"
+msgstr "当前"
+
+msgid "Max"
+msgstr "最大"
+
+msgid "Min"
+msgstr "最小"
+
+msgid "Range"
+msgstr "范围"
+
+msgid "Live sampling"
+msgstr "实时采样"
+
+msgid "Data source: persistent history on flash"
+msgstr "数据来源：Flash 持久化历史"
+
+msgid "Data source: in-memory ring buffer"
+msgstr "数据来源：内存环形缓存"
+
+msgid "All regions"
+msgstr "所有区域"
+
+msgid "Region"
+msgstr "区域"
+
+msgid "Target"
+msgstr "目标"
+
+msgid "Query"
+msgstr "查询"
+
+msgid "History persistence is disabled. Ranges longer than the in-memory buffer may have no data."
+msgstr "历史持久化未启用，超出内存缓存范围的时间段可能没有数据。"
+
+msgid "Statistics"
+msgstr "统计"
+
+msgid "Samples"
+msgstr "样本数"
+
+msgid "Average"
+msgstr "平均"
+
+msgid "P50"
+msgstr "P50"
+
+msgid "Latency trend"
+msgstr "延迟趋势"
+
+msgid "Target count"
+msgstr "目标数"
+
+msgid "Average latency"
+msgstr "平均延迟"
+
+msgid "Packet loss"
+msgstr "丢包率"
+
+msgid "Weighted by samples"
+msgstr "按样本加权"
+
+msgid "Success rate"
+msgstr "成功率"
+
+msgid "No data in this range"
+msgstr "该时间范围内没有数据"
+
+msgid "No monitoring data"
+msgstr "暂无监控数据"
+
+msgid "Add and enable monitoring targets to start collecting data."
+msgstr "请添加并启用监控目标以开始采集数据。"
+
+msgid "Network is healthy"
+msgstr "网络正常"
+
+msgid "All monitored targets respond normally."
+msgstr "所有监控目标响应正常。"
+
+msgid "Network problems detected"
+msgstr "网络存在异常"
+
+msgid "Some targets are unreachable or unstable. Check detailed target cards below."
+msgstr "部分目标不可达或不稳定，详见下方目标卡片。"
+
+msgid "Serious network failure"
+msgstr "网络严重故障"
+
+msgid "One or more targets failed consecutively beyond the threshold limit."
+msgstr "一个或多个目标连续失败次数已超过阈值上限。"
+
+msgid "Current latency"
+msgstr "当前延迟"
+
+msgid "Online"
+msgstr "在线"
+
+msgid "Abnormal"
+msgstr "异常"
+
+msgid "Background service is not running. Monitoring is stopped."
+msgstr "后台服务未运行，监控已停止。"
+
+msgid "Background service did not update data recently. Check the service status."
+msgstr "后台服务近期未更新数据，请检查服务状态。"
+
+msgid "No enabled targets. Go to Targets to add one."
+msgstr "没有已启用的目标，请到「目标管理」添加。"
+
+msgid "Weighted loss"
+msgstr "加权丢包率"
+
+msgid "Lost packets"
+msgstr "丢包数"
+
+msgid "Across enabled targets"
+msgstr "所有已启用目标的平均值"
+
+msgid "Latest probe round"
+msgstr "最近一次检测结果"
+
+msgid "Unweighted"
+msgstr "未加权"
+
+msgid "China network"
+msgstr "国内网络"
+
+msgid "Overseas network"
+msgstr "国外网络"
+
+msgid "Online targets"
+msgstr "在线目标"
+
+msgid "Last check"
+msgstr "最后检测"
+
+msgid "Probe settings"
+msgstr "探测设置"
+
+msgid "Interval"
+msgstr "间隔"
+
+msgid "Data source"
+msgstr "数据来源"
+
+msgid "Persistent history"
+msgstr "历史持久化"
+
+msgid "In-memory ring buffer"
+msgstr "内存环形缓存"
+
+msgid "Retention"
+msgstr "保留期"
+
+msgid "Dual stack"
+msgstr "双协议栈"
+
+msgid "Address family"
+msgstr "地址族"
+
+msgid "No targets configured"
+msgstr "尚未配置监控目标"
+
+msgid "Service running"
+msgstr "服务运行中"
+
+msgid "Service stopped"
+msgstr "服务已停止"
+
+msgid "Last update"
+msgstr "最后更新"
+
+msgid "Operation completed"
+msgstr "操作已完成"
+
+msgid "Start"
+msgstr "启动"
+
+msgid "Stop"
+msgstr "停止"
+
+msgid "Restart"
+msgstr "重启"
+
+msgid "Resume"
+msgstr "继续"
+
+msgid "No matching targets"
+msgstr "没有匹配的目标"
+
+msgid "Region latency comparison"
+msgstr "区域延迟对比"
+
+msgid "Total"
+msgstr "总数"
+
+msgid "Name"
+msgstr "名称"
+
+msgid "No targets"
+msgstr "暂无目标"
+
+msgid "UI refresh interval"
+msgstr "界面刷新间隔"
+
+msgid "Independent from the probe interval"
+msgstr "与探测间隔相互独立"
+
+msgid "Add target"
+msgstr "新增目标"
+
+msgid "Enable selected"
+msgstr "批量启用"
+
+msgid "Disable selected"
+msgstr "批量禁用"
+
+msgid "Refresh"
+msgstr "刷新"
+
+msgid "Default probe method"
+msgstr "默认探测方式"
+
+msgid "Global interval"
+msgstr "全局间隔"
+
+msgid "Select all targets"
+msgstr "全选所有目标"
+
+msgid "Address"
+msgstr "地址"
+
+msgid "Probe method"
+msgstr "探测方式"
+
+msgid "Custom label"
+msgstr "自定义标签"
+
+msgid "Family"
+msgstr "地址族"
+
+msgid "Interface"
+msgstr "接口"
+
+msgid "Enabled"
+msgstr "已启用"
+
+msgid "Actions"
+msgstr "操作"
+
+msgid "Interval and timeout set to 0 inherit the global settings."
+msgstr "间隔与超时填 0 表示继承全局设置。"
+
+msgid "The table scrolls horizontally on small screens."
+msgstr "小屏幕下表格可横向滚动。"
+
+msgid "TCP connect"
+msgstr "TCP 连接"
+
+msgid "global default port"
+msgstr "跟随全局默认端口"
+
+msgid "ICMP (ping)"
+msgstr "ICMP（ping）"
+
+msgid "Select"
+msgstr "选择"
+
+msgid "Edit"
+msgstr "编辑"
+
+msgid "Move up"
+msgstr "上移"
+
+msgid "Move down"
+msgstr "下移"
+
+msgid "Copy"
+msgstr "复制"
+
+msgid "Delete"
+msgstr "删除"
+
+msgid "Delete target"
+msgstr "删除目标"
+
+msgid "Delete this target?"
+msgstr "确定删除该目标？"
+
+msgid "Auto"
+msgstr "自动"
+
+msgid "IPv4"
+msgstr "IPv4"
+
+msgid "IPv6"
+msgstr "IPv6"
+
+msgid "IPv4 + IPv6"
+msgstr "IPv4 + IPv6"
+
+msgid "Global"
+msgstr "跟随全局"
+
+msgid "(current)"
+msgstr "（当前值）"
+
+msgid "Not used by ICMP"
+msgstr "ICMP 不使用端口"
+
+msgid "TCP port (0 = global default)"
+msgstr "TCP 端口（0 = 跟随全局默认）"
+
+msgid "IPv4 only"
+msgstr "仅 IPv4"
+
+msgid "IPv6 only"
+msgstr "仅 IPv6"
+
+msgid "Check interval (s, 0 = global)"
+msgstr "检测间隔（秒，0 = 跟随全局）"
+
+msgid "Timeout (s, 0 = global)"
+msgstr "超时（秒，0 = 跟随全局）"
+
+msgid "Interface (optional)"
+msgstr "接口（可选）"
+
+msgid "Source address (optional)"
+msgstr "源地址（可选）"
+
+msgid "Remark"
+msgstr "备注"
+
+msgid "Name and address are required"
+msgstr "名称与地址为必填项"
+
+msgid "TCP targets need a port or a global default port"
+msgstr "TCP 目标需要填写端口，或先设置一个全局默认端口"
+
+msgid "No changes to save"
+msgstr "没有需要保存的改动"
+
+msgid "Edit target"
+msgstr "编辑目标"
+
+msgid "Save & Apply"
+msgstr "保存并应用"
+
+msgid "Network Monitor"
+msgstr "网络质量监控"
+
+msgid "Overview"
+msgstr "概览"
+
+msgid "Realtime"
+msgstr "实时监控"
+
+msgid "Latency Charts"
+msgstr "延迟曲线"
+
+msgid "CN / Global"
+msgstr "国内 / 国外"
+
+msgid "History"
+msgstr "历史数据"
+
+msgid "Targets"
+msgstr "目标管理"
+
+msgid "Settings"
+msgstr "设置"
+
+msgid "Excellent"
+msgstr "优秀"
+
+msgid "Good"
+msgstr "良好"
+
+msgid "Fair"
+msgstr "一般"
+
+msgid "Poor"
+msgstr "较差"
+
+msgid "Severe"
+msgstr "严重"
+
+msgid "Offline"
+msgstr "离线"
+
+msgid "Unknown"
+msgstr "未知"
+
+msgid "1 min"
+msgstr "最近 1 分钟"
+
+msgid "5 min"
+msgstr "最近 5 分钟"
+
+msgid "15 min"
+msgstr "最近 15 分钟"
+
+msgid "30 min"
+msgstr "最近 30 分钟"
+
+msgid "1 hour"
+msgstr "最近 1 小时"
+
+msgid "6 hours"
+msgstr "最近 6 小时"
+
+msgid "12 hours"
+msgstr "最近 12 小时"
+
+msgid "24 hours"
+msgstr "最近 24 小时"
+
+msgid "3 days"
+msgstr "最近 3 天"
+
+msgid "7 days"
+msgstr "最近 7 天"
+
+msgid "30 days"
+msgstr "最近 30 天"
+
+msgid "Invalid arguments"
+msgstr "参数无效"
+
+msgid "Invalid ID"
+msgstr "标识无效"
+
+msgid "Invalid target selection"
+msgstr "目标选择无效"
+
+msgid "Invalid name"
+msgstr "名称无效"
+
+msgid "Invalid host"
+msgstr "主机无效"
+
+msgid "Invalid region"
+msgstr "区域无效"
+
+msgid "Invalid label"
+msgstr "标签无效"
+
+msgid "Invalid protocol"
+msgstr "协议无效"
+
+msgid "Invalid address family"
+msgstr "地址族无效"
+
+msgid "Invalid interface"
+msgstr "接口无效"
+
+msgid "Invalid source address"
+msgstr "源地址无效"
+
+msgid "Invalid remark"
+msgstr "备注无效"
+
+msgid "Invalid direction"
+msgstr "方向无效"
+
+msgid "Target not found"
+msgstr "目标不存在"
+
+msgid "Target already exists"
+msgstr "目标已存在"
+
+msgid "Cannot create configuration section"
+msgstr "无法创建配置节"
+
+msgid "Already at the boundary"
+msgstr "已在边界位置"
+
+msgid "Invalid value for %s"
+msgstr "%s 的值无效"

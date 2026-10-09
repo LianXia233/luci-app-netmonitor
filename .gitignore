@@ -1,0 +1,26 @@
+# 单元测试运行时产生的工作区（tests/test_netmon_daemon.sh 会自建）
+tests/.tmp/
+
+# 编译与编辑器产物
+*.o
+*.a
+*.ipk
+*.apk
+*.lmo
+*.swp
+*~
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Windows 保留设备名：无法被常规删除，忽略即可
+/nul
+
+# 重构期的实机诊断脚本与截图（一次性产物，不入库）
+probe/
+.playwright-cli/
+node_modules/
+
+# WorkBuddy 本地工作区元数据
+.workbuddy/

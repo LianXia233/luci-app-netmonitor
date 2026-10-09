@@ -1,0 +1,577 @@
+# luci-app-netmonitor translation file
+# Copyright (C) 2026 netmonitor contributors
+# This file is distributed under the same license as the luci-app-netmonitor package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: luci-app-netmonitor 1.2.0\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: po/gen_po.py\n"
+
+
+msgid "Never checked"
+msgstr ""
+
+msgid "Just now"
+msgstr ""
+
+msgid "%d seconds ago"
+msgstr ""
+
+msgid "%d minutes ago"
+msgstr ""
+
+msgid "%d hours ago"
+msgstr ""
+
+msgid "%d days ago"
+msgstr ""
+
+msgid "China"
+msgstr ""
+
+msgid "Overseas"
+msgstr ""
+
+msgid "Other"
+msgstr ""
+
+msgid "Timeout"
+msgstr ""
+
+msgid "DNS resolve failed"
+msgstr ""
+
+msgid "Network unreachable"
+msgstr ""
+
+msgid "Invalid target"
+msgstr ""
+
+msgid "Check failed"
+msgstr ""
+
+msgid "Loss"
+msgstr ""
+
+msgid "Availability"
+msgstr ""
+
+msgid "Avg"
+msgstr ""
+
+msgid "P95"
+msgstr ""
+
+msgid "Icon"
+msgstr ""
+
+msgid "Status"
+msgstr ""
+
+msgid "Cancel"
+msgstr ""
+
+msgid "Confirm"
+msgstr ""
+
+msgid "OK"
+msgstr ""
+
+msgid "Time range"
+msgstr ""
+
+msgid "All targets"
+msgstr ""
+
+msgid "Quick filter"
+msgstr ""
+
+msgid "No target selected"
+msgstr ""
+
+msgid "Current"
+msgstr ""
+
+msgid "Max"
+msgstr ""
+
+msgid "Min"
+msgstr ""
+
+msgid "Range"
+msgstr ""
+
+msgid "Live sampling"
+msgstr ""
+
+msgid "Data source: persistent history on flash"
+msgstr ""
+
+msgid "Data source: in-memory ring buffer"
+msgstr ""
+
+msgid "All regions"
+msgstr ""
+
+msgid "Region"
+msgstr ""
+
+msgid "Target"
+msgstr ""
+
+msgid "Query"
+msgstr ""
+
+msgid "History persistence is disabled. Ranges longer than the in-memory buffer may have no data."
+msgstr ""
+
+msgid "Statistics"
+msgstr ""
+
+msgid "Samples"
+msgstr ""
+
+msgid "Average"
+msgstr ""
+
+msgid "P50"
+msgstr ""
+
+msgid "Latency trend"
+msgstr ""
+
+msgid "Target count"
+msgstr ""
+
+msgid "Average latency"
+msgstr ""
+
+msgid "Packet loss"
+msgstr ""
+
+msgid "Weighted by samples"
+msgstr ""
+
+msgid "Success rate"
+msgstr ""
+
+msgid "No data in this range"
+msgstr ""
+
+msgid "No monitoring data"
+msgstr ""
+
+msgid "Add and enable monitoring targets to start collecting data."
+msgstr ""
+
+msgid "Network is healthy"
+msgstr ""
+
+msgid "All monitored targets respond normally."
+msgstr ""
+
+msgid "Network problems detected"
+msgstr ""
+
+msgid "Some targets are unreachable or unstable. Check detailed target cards below."
+msgstr ""
+
+msgid "Serious network failure"
+msgstr ""
+
+msgid "One or more targets failed consecutively beyond the threshold limit."
+msgstr ""
+
+msgid "Current latency"
+msgstr ""
+
+msgid "Online"
+msgstr ""
+
+msgid "Abnormal"
+msgstr ""
+
+msgid "Background service is not running. Monitoring is stopped."
+msgstr ""
+
+msgid "Background service did not update data recently. Check the service status."
+msgstr ""
+
+msgid "No enabled targets. Go to Targets to add one."
+msgstr ""
+
+msgid "Weighted loss"
+msgstr ""
+
+msgid "Lost packets"
+msgstr ""
+
+msgid "Across enabled targets"
+msgstr ""
+
+msgid "Latest probe round"
+msgstr ""
+
+msgid "Unweighted"
+msgstr ""
+
+msgid "China network"
+msgstr ""
+
+msgid "Overseas network"
+msgstr ""
+
+msgid "Online targets"
+msgstr ""
+
+msgid "Last check"
+msgstr ""
+
+msgid "Probe settings"
+msgstr ""
+
+msgid "Interval"
+msgstr ""
+
+msgid "Data source"
+msgstr ""
+
+msgid "Persistent history"
+msgstr ""
+
+msgid "In-memory ring buffer"
+msgstr ""
+
+msgid "Retention"
+msgstr ""
+
+msgid "Dual stack"
+msgstr ""
+
+msgid "Address family"
+msgstr ""
+
+msgid "No targets configured"
+msgstr ""
+
+msgid "Service running"
+msgstr ""
+
+msgid "Service stopped"
+msgstr ""
+
+msgid "Last update"
+msgstr ""
+
+msgid "Operation completed"
+msgstr ""
+
+msgid "Start"
+msgstr ""
+
+msgid "Stop"
+msgstr ""
+
+msgid "Restart"
+msgstr ""
+
+msgid "Resume"
+msgstr ""
+
+msgid "No matching targets"
+msgstr ""
+
+msgid "Region latency comparison"
+msgstr ""
+
+msgid "Total"
+msgstr ""
+
+msgid "Name"
+msgstr ""
+
+msgid "No targets"
+msgstr ""
+
+msgid "UI refresh interval"
+msgstr ""
+
+msgid "Independent from the probe interval"
+msgstr ""
+
+msgid "Add target"
+msgstr ""
+
+msgid "Enable selected"
+msgstr ""
+
+msgid "Disable selected"
+msgstr ""
+
+msgid "Refresh"
+msgstr ""
+
+msgid "Default probe method"
+msgstr ""
+
+msgid "Global interval"
+msgstr ""
+
+msgid "Select all targets"
+msgstr ""
+
+msgid "Address"
+msgstr ""
+
+msgid "Probe method"
+msgstr ""
+
+msgid "Custom label"
+msgstr ""
+
+msgid "Family"
+msgstr ""
+
+msgid "Interface"
+msgstr ""
+
+msgid "Enabled"
+msgstr ""
+
+msgid "Actions"
+msgstr ""
+
+msgid "Interval and timeout set to 0 inherit the global settings."
+msgstr ""
+
+msgid "The table scrolls horizontally on small screens."
+msgstr ""
+
+msgid "TCP connect"
+msgstr ""
+
+msgid "global default port"
+msgstr ""
+
+msgid "ICMP (ping)"
+msgstr ""
+
+msgid "Select"
+msgstr ""
+
+msgid "Edit"
+msgstr ""
+
+msgid "Move up"
+msgstr ""
+
+msgid "Move down"
+msgstr ""
+
+msgid "Copy"
+msgstr ""
+
+msgid "Delete"
+msgstr ""
+
+msgid "Delete target"
+msgstr ""
+
+msgid "Delete this target?"
+msgstr ""
+
+msgid "Auto"
+msgstr ""
+
+msgid "IPv4"
+msgstr ""
+
+msgid "IPv6"
+msgstr ""
+
+msgid "IPv4 + IPv6"
+msgstr ""
+
+msgid "Global"
+msgstr ""
+
+msgid "(current)"
+msgstr ""
+
+msgid "Not used by ICMP"
+msgstr ""
+
+msgid "TCP port (0 = global default)"
+msgstr ""
+
+msgid "IPv4 only"
+msgstr ""
+
+msgid "IPv6 only"
+msgstr ""
+
+msgid "Check interval (s, 0 = global)"
+msgstr ""
+
+msgid "Timeout (s, 0 = global)"
+msgstr ""
+
+msgid "Interface (optional)"
+msgstr ""
+
+msgid "Source address (optional)"
+msgstr ""
+
+msgid "Remark"
+msgstr ""
+
+msgid "Name and address are required"
+msgstr ""
+
+msgid "TCP targets need a port or a global default port"
+msgstr ""
+
+msgid "No changes to save"
+msgstr ""
+
+msgid "Edit target"
+msgstr ""
+
+msgid "Save & Apply"
+msgstr ""
+
+msgid "Network Monitor"
+msgstr ""
+
+msgid "Overview"
+msgstr ""
+
+msgid "Realtime"
+msgstr ""
+
+msgid "Latency Charts"
+msgstr ""
+
+msgid "CN / Global"
+msgstr ""
+
+msgid "History"
+msgstr ""
+
+msgid "Targets"
+msgstr ""
+
+msgid "Settings"
+msgstr ""
+
+msgid "Excellent"
+msgstr ""
+
+msgid "Good"
+msgstr ""
+
+msgid "Fair"
+msgstr ""
+
+msgid "Poor"
+msgstr ""
+
+msgid "Severe"
+msgstr ""
+
+msgid "Offline"
+msgstr ""
+
+msgid "Unknown"
+msgstr ""
+
+msgid "1 min"
+msgstr ""
+
+msgid "5 min"
+msgstr ""
+
+msgid "15 min"
+msgstr ""
+
+msgid "30 min"
+msgstr ""
+
+msgid "1 hour"
+msgstr ""
+
+msgid "6 hours"
+msgstr ""
+
+msgid "12 hours"
+msgstr ""
+
+msgid "24 hours"
+msgstr ""
+
+msgid "3 days"
+msgstr ""
+
+msgid "7 days"
+msgstr ""
+
+msgid "30 days"
+msgstr ""
+
+msgid "Invalid arguments"
+msgstr ""
+
+msgid "Invalid ID"
+msgstr ""
+
+msgid "Invalid target selection"
+msgstr ""
+
+msgid "Invalid name"
+msgstr ""
+
+msgid "Invalid host"
+msgstr ""
+
+msgid "Invalid region"
+msgstr ""
+
+msgid "Invalid label"
+msgstr ""
+
+msgid "Invalid protocol"
+msgstr ""
+
+msgid "Invalid address family"
+msgstr ""
+
+msgid "Invalid interface"
+msgstr ""
+
+msgid "Invalid source address"
+msgstr ""
+
+msgid "Invalid remark"
+msgstr ""
+
+msgid "Invalid direction"
+msgstr ""
+
+msgid "Target not found"
+msgstr ""
+
+msgid "Target already exists"
+msgstr ""
+
+msgid "Cannot create configuration section"
+msgstr ""
+
+msgid "Already at the boundary"
+msgstr ""
+
+msgid "Invalid value for %s"
+msgstr ""
