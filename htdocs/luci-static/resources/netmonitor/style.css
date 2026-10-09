@@ -1290,61 +1290,152 @@
 
 /* 原生开关（替代 t-switch）。
  *
- * 开关控件统一改为原生 checkbox + 纯 CSS 滑块：appearance:none 抹掉原生
- * 勾选框，用 ::before 画滑块。只驱动 background-color / transform，符合本文件
- * 性能约束；勾选态轨道用品牌色，滑块右移 20px（轨道 44px - 滑块 20px - 2*2px
- * 边距）。设置页 / 目标表格 / 卡片 / 弹窗共用同一套样式。
- * 焦点环复用下方 .nm-root input[type="checkbox"]:focus-visible 规则。
+ * 开关控件统一为原生 checkbox + 纯 CSS 滑块：appearance:none 抹掉原生勾选框，
+ * 用 ::before 画滑块。只驱动 background-color / box-shadow / transform，
+ * 符合本文件的性能约束；勾选态轨道用品牌色。设置页 / 目标表格 / 卡片 /
+ * 弹窗共用同一套样式。
  *
- * 选择器必须写成 input[type="checkbox"].nm-switch 而不能只写 .nm-switch：
- * LuCI 主题（Aurora main.css）里有
- *     input[type="radio"], input[type="checkbox"] { width: calc(var(--spacing)*4) }
- * 即 (元素+属性) 优先级 0,1,1，而单类选择器只有 0,1,0 —— 主题规则胜出，
- * 实测把开关从 44x24 压成 16x16：圆角与底色仍然生效（主题没定义这两项），
- * 于是渲染成一个 16px 蓝色圆点，20x20 的白色滑块 ::before 直接溢出容器，
- * 开关在视觉上完全失效。加上元素+属性前缀后优先级变为 0,2,1，稳定胜出。 */
-input[type="checkbox"].nm-switch {
-	appearance: none;
-	-webkit-appearance: none;
-	width: 44px;
-	height: 24px;
-	margin: 0;
-	padding: 0;
-	flex: 0 0 auto;
+ * 「不被主题覆盖」三道防线（历史与现状）：
+ *   1) 特异性：选择器写成 .nm-root input[type="checkbox"].nm-switch（0,3,1）。
+ *      起因是 LuCI 主题（Aurora main.css）里有
+ *          input[type="radio"], input[type="checkbox"] { width: calc(var(--spacing)*4) }
+ *      —— (元素+属性) 0,1,1，压过单类选择器 .nm-switch 的 0,1,0，
+ *      实测把 44x24 的开关压成 16x16，20x20 的滑块直接溢出容器、开关视觉失效。
+ *   2) !important：对抗主题同样带 !important 的规则。本样式表由 JS 注入到
+ *      head 末尾，晚于主题加载，同级 !important 下后来者胜出。
+ *   3) 清零：把主题可能附加的 ::after（画勾）、background-image（svg 勾）、
+ *      border / outline 一律归零，见下方组合选择器。
+ *
+ * 焦点环：上方清零规则把 outline 归零了，键盘可达性不能丢，
+ * 故在 :focus-visible 上单独补一条（0,4,1，压过通用 checkbox 焦点规则）。 */
+/* 尺寸用变量集中管理：轨道/滑块/行程三处必须自洽，改一个数字就要改三个，
+ * 散落在规则里必然漂移（滑块行程 = 轨道宽 - 滑块宽 - 2*内边距）。 */
+.nm-root {
+	--nm-switch-w: 46px;
+	--nm-switch-h: 26px;
+	--nm-switch-knob: 22px;
+	--nm-switch-pad: 2px;
+}
+
+/* 强制关掉主题给原生 checkbox 加的所有装饰。
+ *
+ * 主题样式表对 input[type=checkbox] 的改造方式不可枚举，实测/常见三类：
+ *   · 尺寸类：Aurora 的 width: calc(var(--spacing)*4) 把 46x26 压成 16x16
+ *     （滑块 22px 直接溢出容器，开关视觉上完全失效）；
+ *   · 伪元素类：把 checkbox 替换成方块并用 ::after 画勾 —— 我们的开关
+ *     会多出一截勾选标记；
+ *   · 背景类：用 background-image（svg 勾）或 border/outline 描边。
+ * 这里一次性清空：把未使用的伪元素摘掉、背景图与边框归零，避免"开关外面
+ * 多一个勾 / 多一圈边框"这类只在特定主题下才暴露的问题。 */
+.nm-root input[type="checkbox"].nm-switch,
+.nm-root input[type="checkbox"].nm-switch::before,
+.nm-root input[type="checkbox"].nm-switch::after {
+	box-sizing: border-box !important;
+	border: 0 !important;
+	outline: 0 !important;
+	background-image: none !important;
+}
+
+.nm-root input[type="checkbox"].nm-switch::after {
+	content: none !important;
+	display: none !important;
+}
+
+.nm-root input[type="checkbox"].nm-switch {
+	appearance: none !important;
+	-webkit-appearance: none !important;
+	-moz-appearance: none !important;
+	display: inline-block !important;
 	position: relative;
-	border: none;
-	border-radius: 999px;
-	background: color-mix(in srgb, var(--nm-muted, #7b8494) 35%, transparent);
-	cursor: pointer;
-	/* 表格单元格内与行内图标并排时保持中线对齐 */
+	width: var(--nm-switch-w) !important;
+	height: var(--nm-switch-h) !important;
+	/* 主题常给表单控件设 min-width / min-height，会顶开定宽开关 */
+	min-width: var(--nm-switch-w) !important;
+	min-height: var(--nm-switch-h) !important;
+	max-width: none !important;
+	max-height: none !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	flex: 0 0 auto;
 	vertical-align: middle;
-	transition: background-color 0.15s ease;
+	border-radius: 999px !important;
+	background-color: color-mix(in srgb, var(--nm-muted, #7b8494) 40%, transparent) !important;
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nm-muted, #7b8494) 30%, transparent);
+	cursor: pointer;
+	transition: background-color 0.18s ease, box-shadow 0.18s ease;
 }
 
-input[type="checkbox"].nm-switch::before {
-	content: "";
+.nm-root input[type="checkbox"].nm-switch::before {
+	content: "" !important;
 	position: absolute;
-	top: 2px;
-	left: 2px;
-	width: 20px;
-	height: 20px;
-	border-radius: 50%;
-	background: #fff;
-	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
-	transition: transform 0.15s ease;
+	top: var(--nm-switch-pad);
+	left: var(--nm-switch-pad);
+	display: block !important;
+	width: var(--nm-switch-knob);
+	height: var(--nm-switch-knob);
+	border-radius: 50% !important;
+	background: #fff !important;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+	transition: transform 0.18s ease;
 }
 
-input[type="checkbox"].nm-switch:checked {
-	background: var(--nm-accent, #2f6fed);
+.nm-root input[type="checkbox"].nm-switch:checked {
+	background-color: var(--nm-accent, #2f6fed) !important;
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nm-accent, #2f6fed) 70%, transparent);
 }
 
-input[type="checkbox"].nm-switch:checked::before {
-	transform: translateX(20px);
+/* 行程 = 轨道宽 - 滑块宽 - 2*内边距，用 calc 从变量推出，不再硬编码 20px：
+ * 调整轨道尺寸时滑块不会跑出边界。 */
+.nm-root input[type="checkbox"].nm-switch:checked::before {
+	transform: translateX(calc(
+		var(--nm-switch-w) - var(--nm-switch-knob) - 2 * var(--nm-switch-pad))) !important;
 }
 
-input[type="checkbox"].nm-switch:disabled {
-	opacity: 0.5;
-	cursor: not-allowed;
+.nm-root input[type="checkbox"].nm-switch:hover:not(:disabled) {
+	background-color: color-mix(in srgb, var(--nm-muted, #7b8494) 55%, transparent) !important;
+}
+
+.nm-root input[type="checkbox"].nm-switch:checked:hover:not(:disabled) {
+	background-color: color-mix(in srgb, var(--nm-accent, #2f6fed) 85%, #0b1220) !important;
+}
+
+.nm-root input[type="checkbox"].nm-switch:active:not(:disabled)::before {
+	width: calc(var(--nm-switch-knob) + 2px);
+}
+
+.nm-root input[type="checkbox"].nm-switch:disabled {
+	opacity: 0.45 !important;
+	cursor: not-allowed !important;
+}
+
+/* 焦点环单独给开关补一条：上方组合选择器把 outline 归零了，
+ * 键盘可达性不能因此丢失 */
+.nm-root input[type="checkbox"].nm-switch:focus-visible {
+	outline: 2px solid var(--nm-accent, #2f6fed) !important;
+	outline-offset: 2px !important;
+}
+
+/* 无障碍偏好：关掉滑块位移与配色过渡，保留状态色差 */
+@media (prefers-reduced-motion: reduce) {
+	.nm-root input[type="checkbox"].nm-switch,
+	.nm-root input[type="checkbox"].nm-switch::before {
+		transition: none !important;
+	}
+}
+
+/* 高对比度 / 强制配色模式（Windows 等）：系统色接管时不要自绘轨道，
+ * 交给系统渲染，避免开关在强制黑底下变成"看不见的色块"。 */
+@media (forced-colors: active) {
+	.nm-root input[type="checkbox"].nm-switch {
+		background-color: ButtonFace !important;
+		box-shadow: none;
+	}
+	.nm-root input[type="checkbox"].nm-switch:checked {
+		background-color: Highlight !important;
+	}
+	.nm-root input[type="checkbox"].nm-switch::before {
+		background: ButtonText !important;
+	}
 }
 
 .nm-group-head {
@@ -2005,34 +2096,16 @@ input[type="checkbox"].nm-switch:disabled {
 }
 
 /* 动作栏（t-card 内部）：保存 / 放弃 / 状态胶囊。
- * sticky 吸底：设置页表单较长，改动后不必滚到页面最底部才能保存；
- * 视觉上保持卡片样式，附加投影与不透明背景避免与表单内容重叠时透底。 */
+ *
+ * 刻意**不做吸底**：1.5.3 曾把它改成 position:sticky 悬浮视口底部，
+ * 但吸底栏会长期浮在内容之上、与主题自带浮层（以及 LuCI 应用配置时的
+ * 官方弹层）争夺视觉焦点，而这一改动未经实机验证，收益（少滚一次）
+ * 抵不上不确定性，故撤回，动作栏保持在常规文档流的页面末尾。 */
 .nm-action-bar-glass {
 	display: flex;
 	align-items: center;
 	flex-wrap: wrap;
 	gap: 14px;
-	position: sticky;
-	bottom: 8px;
-	/* 刻意**不设 z-index**：
-	 * 取证（LuCI master modules/luci-base/.../resources/ui.js）：
-	 *   · 未保存更改入口是**顶部** #indicators 里的「Unsaved Changes」指示器，
-	 *     点击后由 ui.changes.displayChanges() 走 showModal() 弹全屏浮层；
-	 *     页面底部并没有原生固定栏，因此不存在「两个底部栏抢位」的问题。
-	 *   · 唯一可能叠在一起的是 LuCI 的 modal / alert-message 浮层
-	 *     （应用配置时的「正在应用配置更改…」）。它按 DOM 顺序追加在 body
-	 *     末尾，与 sticky 元素同属根层叠上下文、且 z-index 同为 auto，
-	 *     按「后来居上」绘制在上方 —— 本栏只要保持 z-index:auto 就不会盖住它。
-	 *     若反向把本栏 z-index 调高，反而会压住官方浮层，故这里不动层级。 */
-	box-shadow: 0 6px 24px rgba(15, 23, 42, 0.12);
-}
-
-@supports (backdrop-filter: blur(6px)) or (-webkit-backdrop-filter: blur(6px)) {
-	.nm-action-bar-glass {
-		background: color-mix(in srgb, var(--nm-card-hi, #ffffff) 88%, transparent);
-		-webkit-backdrop-filter: blur(6px);
-		backdrop-filter: blur(6px);
-	}
 }
 
 /* 总览页底部栏：服务状态与操作按钮同排，宽屏左右分布、窄屏自动折行，
