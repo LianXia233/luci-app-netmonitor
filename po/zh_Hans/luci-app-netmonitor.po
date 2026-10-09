@@ -54,23 +54,8 @@ msgstr "目标无效"
 msgid "Check failed"
 msgstr "检测失败"
 
-msgid "Loss"
-msgstr "丢包"
-
-msgid "Availability"
-msgstr "在线率"
-
-msgid "Avg"
-msgstr "平均"
-
-msgid "P95"
-msgstr "P95"
-
 msgid "Icon"
 msgstr "图标"
-
-msgid "Status"
-msgstr "状态"
 
 msgid "Close"
 msgstr "关闭"
@@ -83,6 +68,18 @@ msgstr "确认"
 
 msgid "OK"
 msgstr "确定"
+
+msgid "Loss"
+msgstr "丢包"
+
+msgid "Availability"
+msgstr "在线率"
+
+msgid "Avg"
+msgstr "平均"
+
+msgid "P95"
+msgstr "P95"
 
 msgid "Time range"
 msgstr "时间范围"

@@ -54,22 +54,7 @@ msgstr ""
 msgid "Check failed"
 msgstr ""
 
-msgid "Loss"
-msgstr ""
-
-msgid "Availability"
-msgstr ""
-
-msgid "Avg"
-msgstr ""
-
-msgid "P95"
-msgstr ""
-
 msgid "Icon"
-msgstr ""
-
-msgid "Status"
 msgstr ""
 
 msgid "Close"
@@ -82,6 +67,18 @@ msgid "Confirm"
 msgstr ""
 
 msgid "OK"
+msgstr ""
+
+msgid "Loss"
+msgstr ""
+
+msgid "Availability"
+msgstr ""
+
+msgid "Avg"
+msgstr ""
+
+msgid "P95"
 msgstr ""
 
 msgid "Time range"
