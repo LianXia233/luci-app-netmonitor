@@ -26,12 +26,14 @@
 .nm-root,
 .nm-modal,
 .nm-dlg-host {
-	--nm-bg: var(--background-color, #ffffff);
-	--nm-fg: var(--text-color, #20242c);
-	--nm-card: var(--light-bg-color, #f7f8fa);
-	--nm-card-hi: var(--lighter-bg-color, #ffffff);
+	--nm-bg: var(--background-color, Canvas);
+	--nm-fg: var(--text-color, CanvasText);
+	/* 容器底色：主题没给就用 transparent，由主题自己的底色承载，
+	 * 不再自写一套卡片色板（见「不自写背景」约定） */
+	--nm-card: var(--light-bg-color, transparent);
+	--nm-card-hi: var(--lighter-bg-color, transparent);
 	--nm-border: var(--border-color, rgba(120, 130, 150, 0.20));
-	--nm-muted: var(--light-text-color, #7b8494);
+	--nm-muted: var(--light-text-color, GrayText);
 	--nm-accent: var(--accent-color, #2f6fed);
 
 	--nm-ok: #2e9e5b;
@@ -69,12 +71,12 @@
 	.nm-root,
 	.nm-modal,
 	.nm-dlg-host {
-		--nm-bg: var(--background-color, #14171c);
-		--nm-fg: var(--text-color, #e6e9ef);
-		--nm-card: var(--light-bg-color, #1c2027);
-		--nm-card-hi: var(--lighter-bg-color, #23282f);
+		--nm-bg: var(--background-color, Canvas);
+		--nm-fg: var(--text-color, CanvasText);
+		--nm-card: var(--light-bg-color, transparent);
+		--nm-card-hi: var(--lighter-bg-color, transparent);
 		--nm-border: var(--border-color, rgba(255, 255, 255, 0.10));
-		--nm-muted: var(--light-text-color, #98a1b0);
+		--nm-muted: var(--light-text-color, GrayText);
 
 		--nm-cyan: #36d9ff;
 		--nm-blue: #72a9ff;
@@ -156,7 +158,7 @@
  * 保持 div 而非任何组件库卡片：Web Components 的 shadow DOM 会克隆
  * light DOM 内容并隔离外部样式，导致卡片内部的 .nm-* 布局类全部失效。 */
 .nm-tcard {
-	background: var(--nm-card-hi, #ffffff);
+	background: transparent;
 	border: 1px solid var(--nm-border, rgba(120, 130, 150, 0.2));
 	border-radius: var(--nm-radius, 14px);
 	box-sizing: border-box;
@@ -219,7 +221,7 @@
 }
 
 .nm-stat-badge {
-	background: var(--nm-card);
+	background: transparent;
 	border: 1px solid var(--nm-border);
 	border-radius: var(--nm-radius-sm);
 	padding: 8px 16px;
@@ -275,7 +277,7 @@
 	justify-content: center;
 	flex: 0 0 auto;
 	border-radius: 10px;
-	background: var(--nm-card);
+	background: transparent;
 }
 
 .nm-card-icon-box svg { width: 40px; height: 40px; }
@@ -337,7 +339,7 @@
 .nm-bar-dyn-5 { transform-origin: 50% 100%; animation: nm-bar-osc 1.5s ease-in-out 1s infinite; }
 
 .nm-card {
-	background: var(--nm-card);
+	background: transparent;
 	border: 1px solid var(--nm-border);
 	border-radius: var(--nm-radius);
 	padding: 14px 16px;
@@ -346,7 +348,7 @@
 }
 
 .nm-card-hi {
-	background: var(--nm-card-hi);
+	background: transparent;
 }
 
 .nm-card-title {
@@ -381,7 +383,7 @@
 	padding: 20px 22px;
 	border-radius: var(--nm-radius);
 	border: 1px solid var(--nm-border);
-	background: var(--nm-card-hi);
+	background: transparent;
 	position: relative;
 	overflow: hidden;
 }
@@ -446,7 +448,7 @@
 /* ---------------------------------------------------------------- 目标卡片 */
 
 .nm-target {
-	background: var(--nm-card-hi);
+	background: transparent;
 	border: 1px solid var(--nm-border);
 	border-radius: var(--nm-radius);
 	padding: 14px 16px 10px 16px;
@@ -489,7 +491,7 @@
 	border-radius: 999px;
 	border: 1px solid var(--nm-border);
 	color: var(--nm-muted);
-	background: var(--nm-card);
+	background: transparent;
 	white-space: nowrap;
 	flex: 0 0 auto;
 }
@@ -668,14 +670,14 @@
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
 	color: var(--nm-muted);
-	background: var(--nm-card);
+	background: transparent;
 	font-weight: 600;
 	position: sticky;
 	top: 0;
 }
 
 .nm-table tbody tr:hover {
-	background: var(--nm-card);
+	background: color-mix(in srgb, var(--nm-fg, CanvasText) 6%, transparent);
 }
 
 .nm-table td.nm-num {
@@ -692,7 +694,7 @@
 	font: inherit;
 	font-size: 13px;
 	color: var(--nm-fg);
-	background: var(--nm-card);
+	background: transparent;
 	border: 1px solid var(--nm-border);
 	border-radius: var(--nm-radius-sm);
 	padding: 6px 12px;
@@ -761,7 +763,7 @@
 .nm-tip {
 	position: absolute;
 	pointer-events: none;
-	background: var(--nm-card-hi);
+	background: transparent;
 	border: 1px solid var(--nm-border);
 	border-radius: var(--nm-radius-sm);
 	padding: 6px 9px;
@@ -1184,7 +1186,7 @@
 }
 
 .nm-modal-box {
-	background: var(--nm-bg, #fff);
+	background: var(--nm-bg);
 	color: var(--nm-fg, #20242c);
 	border: 1px solid var(--nm-border);
 	border-radius: var(--nm-radius);
@@ -1221,7 +1223,7 @@
 	bottom: 0;
 	margin: 14px -20px 0 -20px;
 	padding: 12px 20px;
-	background: var(--nm-bg, #fff);
+	background: var(--nm-bg);
 	border-top: 1px solid var(--nm-border);
 }
 
@@ -1576,7 +1578,7 @@
  * 也无法把胶囊与折线颜色对应起来。
  *
  * 目标色由 charts.js 通过 --nm-chip-color 注入（与折线、图例同源，
- * 都取自 common.palette 的同一索引），CSS 只负责把变量应用到
+ * 都取自 chart.palette 的同一索引），CSS 只负责把变量应用到
  * 边框 / 文字 / 底色，不在样式层硬编码任何具体颜色。 */
 .nm-chip-tag {
 	cursor: pointer;
@@ -1593,7 +1595,7 @@
 	white-space: nowrap;
 	border-radius: 999px;
 	border: 1px solid var(--nm-border, rgba(120, 130, 150, 0.28));
-	background: var(--nm-card-hi, #ffffff);
+	background: transparent;
 	color: var(--nm-fg, #20242c);
 	transition: background-color .15s ease, border-color .15s ease, opacity .15s ease;
 }
@@ -1799,7 +1801,7 @@
 }
 
 .nm-sum-card {
-	background: var(--nm-card-hi);
+	background: transparent;
 	border: 1px solid var(--nm-border);
 	border-radius: var(--nm-radius);
 	padding: 14px 16px;
@@ -1839,7 +1841,7 @@
 }
 
 .nm-chart-box-glass {
-	background: var(--nm-card);
+	background: transparent;
 	border: 1px solid var(--nm-border);
 	border-radius: var(--nm-radius-sm);
 	padding: 14px 10px;
@@ -1897,7 +1899,7 @@
 	display: flex;
 	align-items: center;
 	gap: 14px;
-	background: var(--nm-card);
+	background: transparent;
 	border: 1px solid var(--nm-border);
 	border-radius: var(--nm-radius-sm);
 	padding: 12px 16px;
@@ -1947,7 +1949,7 @@
 }
 
 .nm-mini-metric {
-	background: var(--nm-card);
+	background: transparent;
 	border: 1px solid var(--nm-border);
 	border-radius: var(--nm-radius-sm);
 	padding: 8px 10px;
@@ -1980,7 +1982,7 @@
 .nm-ring-card {
 	flex: 1 1 0;
 	min-width: 0;
-	background: var(--nm-card);
+	background: transparent;
 	border: 1px solid var(--nm-border);
 	border-radius: var(--nm-radius-sm);
 	padding: 10px 14px;
@@ -2071,7 +2073,7 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: var(--nm-card);
+	background: transparent;
 	border-radius: var(--nm-radius-sm);
 	border: 1px solid var(--nm-border);
 	flex: 0 0 auto;
@@ -2259,17 +2261,17 @@
 	user-select: none;
 	border-radius: 8px;
 	border: 1px solid var(--nm-border, rgba(120, 130, 150, 0.28));
-	background: var(--nm-card-hi, #ffffff);
+	background: transparent;
 	color: var(--nm-fg, #20242c);
 	transition: background-color .15s ease, border-color .15s ease, opacity .15s ease;
 }
 
 .nm-btn:hover:not([disabled]):not(.is-disabled) {
-	background: color-mix(in srgb, var(--nm-card-hi, #fff) 94%, var(--nm-fg, #000) 6%);
+	background: color-mix(in srgb, var(--nm-fg, CanvasText) 7%, transparent);
 }
 
 .nm-btn:active:not([disabled]):not(.is-disabled) {
-	background: color-mix(in srgb, var(--nm-card-hi, #fff) 88%, var(--nm-fg, #000) 12%);
+	background: color-mix(in srgb, var(--nm-fg, CanvasText) 13%, transparent);
 }
 
 .nm-btn-primary {
@@ -2504,7 +2506,7 @@
 	max-height: calc(100vh - 48px);
 	display: flex;
 	flex-direction: column;
-	background: var(--nm-card-hi, #ffffff);
+	background: var(--nm-bg);
 	color: var(--nm-fg, #20242c);
 	border: 1px solid var(--nm-border, rgba(120, 130, 150, 0.24));
 	border-radius: 14px;
@@ -2688,3 +2690,8 @@
 		animation: none;
 	}
 }
+
+/* 兜底色配套：wrap() 给 <svg> 根写了 stroke="currentColor" 作为样式表未加载时的
+ * 兜底，填充类图形（圆点、脉冲点）会跟着继承出一圈描边。样式表正常时
+ * 在这里把填充元素的描边去掉，保证视觉与改造前一致。 */
+.nm-svg [class*="nm-fill-"] { stroke: none; }
