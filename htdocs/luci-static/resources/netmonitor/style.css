@@ -2004,12 +2004,62 @@ input[type="checkbox"].nm-switch:disabled {
 	background: var(--nm-border);
 }
 
-/* 动作栏（t-card 内部）：保存 / 放弃 / 状态胶囊 */
+/* 动作栏（t-card 内部）：保存 / 放弃 / 状态胶囊。
+ * sticky 吸底：设置页表单较长，改动后不必滚到页面最底部才能保存；
+ * 视觉上保持卡片样式，附加投影与不透明背景避免与表单内容重叠时透底。 */
 .nm-action-bar-glass {
 	display: flex;
 	align-items: center;
 	flex-wrap: wrap;
 	gap: 14px;
+	position: sticky;
+	bottom: 8px;
+	z-index: 5;
+	box-shadow: 0 6px 24px rgba(15, 23, 42, 0.12);
+}
+
+@supports (backdrop-filter: blur(6px)) or (-webkit-backdrop-filter: blur(6px)) {
+	.nm-action-bar-glass {
+		background: color-mix(in srgb, var(--nm-card-hi, #ffffff) 88%, transparent);
+		-webkit-backdrop-filter: blur(6px);
+		backdrop-filter: blur(6px);
+	}
+}
+
+/* 总览页底部栏：服务状态与操作按钮同排，宽屏左右分布、窄屏自动折行，
+ * 替代此前垂直堆叠的两行，减少一屏占用。 */
+.nm-foot-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 14px;
+}
+
+.nm-foot-status {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	flex: 1 1 260px;
+	min-width: 0;
+}
+
+.nm-foot-livebars {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-left: 8px;
+}
+
+.nm-foot-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	flex: 0 0 auto;
+	margin-left: auto;
+}
+
+@media (max-width: 640px) {
+	.nm-foot-actions { margin-left: 0; }
 }
 
 .nm-dirty-pill {

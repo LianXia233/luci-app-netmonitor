@@ -72,6 +72,9 @@ msgstr "图标"
 msgid "Status"
 msgstr "状态"
 
+msgid "Close"
+msgstr "关闭"
+
 msgid "Cancel"
 msgstr "取消"
 
@@ -279,12 +282,6 @@ msgstr "停止"
 msgid "Restart"
 msgstr "重启"
 
-msgid "Resume"
-msgstr "继续"
-
-msgid "No matching targets"
-msgstr "没有匹配的目标"
-
 msgid "Region latency comparison"
 msgstr "区域延迟对比"
 
@@ -296,12 +293,6 @@ msgstr "名称"
 
 msgid "No targets"
 msgstr "暂无目标"
-
-msgid "UI refresh interval"
-msgstr "界面刷新间隔"
-
-msgid "Independent from the probe interval"
-msgstr "与探测间隔相互独立"
 
 msgid "Add target"
 msgstr "新增目标"
