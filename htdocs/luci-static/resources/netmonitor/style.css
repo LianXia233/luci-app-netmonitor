@@ -2014,7 +2014,16 @@ input[type="checkbox"].nm-switch:disabled {
 	gap: 14px;
 	position: sticky;
 	bottom: 8px;
-	z-index: 5;
+	/* 刻意**不设 z-index**：
+	 * 取证（LuCI master modules/luci-base/.../resources/ui.js）：
+	 *   · 未保存更改入口是**顶部** #indicators 里的「Unsaved Changes」指示器，
+	 *     点击后由 ui.changes.displayChanges() 走 showModal() 弹全屏浮层；
+	 *     页面底部并没有原生固定栏，因此不存在「两个底部栏抢位」的问题。
+	 *   · 唯一可能叠在一起的是 LuCI 的 modal / alert-message 浮层
+	 *     （应用配置时的「正在应用配置更改…」）。它按 DOM 顺序追加在 body
+	 *     末尾，与 sticky 元素同属根层叠上下文、且 z-index 同为 auto，
+	 *     按「后来居上」绘制在上方 —— 本栏只要保持 z-index:auto 就不会盖住它。
+	 *     若反向把本栏 z-index 调高，反而会压住官方浮层，故这里不动层级。 */
 	box-shadow: 0 6px 24px rgba(15, 23, 42, 0.12);
 }
 

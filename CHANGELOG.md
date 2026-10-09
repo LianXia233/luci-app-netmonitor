@@ -30,7 +30,14 @@
 
 ### 修复
 
-- **补齐界面残留英文**（专业术语 IPv4 / IPv6 / P95 / TCP 等保持原样）：
+- **补齐界面残留英文**  - **设置页动作栏层级收敛**：动作栏不设 `z-index`（此前为 5）。取证 LuCI master `ui.js`：「保存并应用」入口是**顶部** `#indicators` 的
+    Unsaved Changes 指示器、点击后走 `showModal()`，页面底部并无原生固定栏；唯一会叠在一起的是官方
+    modal / alert-message 浮层（应用配置时的「正在应用配置更改…」）。该浮层按 DOM 顺序追加在 body 末尾，
+    与 sticky 元素同属根层叠上下文且同为 `z-index:auto`，按「后来居上」绘制在上方；本栏保持 auto 即不会遮挡，
+    若把 z-index 调高反而会压住官方浮层。已核对 `.nm-root` / `.nm-page` 不含 transform / filter / opacity 等
+    会创建层叠上下文的属性。
+
+（专业术语 IPv4 / IPv6 / P95 / TCP 等保持原样）：
   - 弹窗关闭按钮的 `aria-label` 由硬编码 `Close` 改走 i18n（`_('Close')`，
     po 新增 `Close -> 关闭`，已核对核心语言包无同名冲突）；
   - 实时监控页 4 处英文 msgid（`Resume` / `No matching targets` /
