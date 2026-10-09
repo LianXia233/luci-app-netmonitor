@@ -101,7 +101,7 @@ function bigEnough(size, min) {
  * 只在导出前经本表转成人话再写进 aria-label —— 读屏念的是「延迟」「探测」，
  * 而不是 'latency' 'ping' 这类源码标识。
  *
- * 与 common.js 的 BACKEND_MSG 同理：集中一张表，新增图标时在此登记即可，
+ * 与 format.js 的 BACKEND_MSG 同理：集中一张表，新增图标时在此登记即可，
  * 不必在每个绘制分支里各写一遍文案，也不会出现「同一个图标两处两种叫法」。
  * 未登记的标识按原样透出，便于发现漏登记项。 */
 var LABEL_ZH = {

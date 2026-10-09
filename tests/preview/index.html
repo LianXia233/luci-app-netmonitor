@@ -6,8 +6,10 @@
  * 用途：在桌面浏览器里离线预览 7 个视图页的视觉效果与交互，
  * 无需真实路由器 / rpcd / ubus。加载方式：
  *
- *   cd /workspace && python3 -m http.server 8000
+ *   cd /workspace/luci-app-netmonitor && python3 -m http.server 8000
  *   打开 http://localhost:8000/tests/preview/index.html
+ *   （服务器根必须是**仓库根**：页面内资源用绝对路径 /htdocs/... 与 /po/...，
+ *     根目录起错会全部 404）
  *
  * 实现要点：
  *   - 用 fetch 直接读取各 .js 源文件，解析 LuCI 的 'require x as y'

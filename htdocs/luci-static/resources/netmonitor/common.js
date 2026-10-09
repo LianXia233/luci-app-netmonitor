@@ -95,7 +95,9 @@ function loadI18n() {
 }
 
 /* LuCI 的模块加载器要求每个模块导出一个 Class（Class.isSubclass 校验），
- * 这里使用 Class.singleton，页面可以直接以 common.xxx() 形式调用。 */
+ * 这里用 Class.extend（与项目其余模块一致；README 开发约定禁止 Class.singleton，
+ * 其返回的静态实例会触发 factory yields invalid constructor），
+ * 页面可以直接以 common.xxx() 形式调用。 */
 return Class.extend({
 	__name__: 'NetMonitor.common',
 

@@ -127,7 +127,7 @@ poll 队列，`refreshSvc` 是 `render()` 内的闭包，切页后无人能引�
 
 | 项目 | 重构前 | 重构后 |
 |---|---|---|
-| 前端资源目录 | 7.4 MB | **152 KB** |
+| 前端资源目录 | 7.4 MB | **159 KB** |
 | 其中第三方运行时 | 7.3 MB（tdesign.min.js） | 0 |
 | 运行时依赖 | TDesign Web Components | 无 |
 
@@ -211,8 +211,12 @@ LUCI_MINIFY_CSS:=1   # 原为 0
 复现命令：
 
 ```bash
-cd probe && node verify.js    # 1~8 项
-cd probe && node xss.js       # 第 10 项
+# 注：早期的 probe/verify.js 与 probe/xss.js 已随重构删除。
+# 现在由下列入口承担回归验证：
+node tests/test_icons.js          # 图标渲染断言（437 条）
+sh tests/test_netmon_daemon.sh   # 守护进程算法断言（101 条）
+python3 po/gen_po.py             # 翻译漂移审计
+# 交互与视觉：起本地服务后打开 tests/preview/index.html（见该文件头注释）
 ```
 
 ---
