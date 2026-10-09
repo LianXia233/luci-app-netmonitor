@@ -150,13 +150,110 @@ function strParams(o) {
 	return r;
 }
 
+/* ---------------------------------------------------- 数值归一化
+ *
+ * 后端把延迟 / 丢包率等浮点字段以**字符串**返回（见 rpcd/ucode/luci.netmonitor
+ * 的 fx()：ucode 的 blobmsg 序列化器对 double 一律输出 17 位有效数字，
+ * 连字面量 26.51 都会变成 26.510000000000002，该限制在算式层面无解，
+ * 只能在服务端 sprintf 成字符串）。
+ *
+ * 但字符串在 JS 里参与 `+` 会走**拼接**而非相加：
+ *     sum += "18.96"        -> "0" + "18.96" = "018.96"
+ *     sum += "25.3"         -> "018.9625.3"
+ *     "018.9625.3" / 3      -> NaN
+ * 实测后果（1.5.0 引入的回归）：
+ *   · regions 页的分区平均曲线全部算成 NaN，path 变成
+ *     `M42.0 NaN L61.4 NaN ...`，曲线完全不可见、Y 轴退化为 0~10；
+ *   · charts 页「当前」摘要卡显示「—」（NaN）。
+ * 注意 `/`、`*`、`-` 的隐式转换是正确的，所以只有**累加**会踩这个坑 ——
+ * 这也解释了为何问题只在少数位置暴露、且不易一眼看出。
+ *
+ * 因此在 RPC 出口统一转成数值：所有消费方都拿到 number，
+ * 不必每个调用点自己记得 parseFloat。
+ */
+/* 需要转数值的字段名。
+ *
+ * 注意 'l'（曲线点位的延迟）与 'latency'（目标当前延迟）是两个不同的键，
+ * 分属 get_history 的 points 与 get_status 的 targets，必须都列上 ——
+ * 首次修复时漏掉 'l'，曲线因此仍然算出 NaN。 */
+var FLOAT_KEYS = ['l', 'avg', 'min', 'max', 'p50', 'p95', 'p99', 'loss', 'loss_avg',
+	'success_rate', 'latency', 'current', 'online_rate', 'mn', 'mx', 'value'];
+
+function numifyNode(o) {
+	if (!o || typeof o !== 'object')
+		return o;
+	for (var i = 0; i < FLOAT_KEYS.length; i++) {
+		var k = FLOAT_KEYS[i];
+		if (o[k] != null)
+			o[k] = toNum(o[k]);
+	}
+	return o;
+}
+
+/* get_history：series[].points[].{l,mn,mx} 与 series[].summary.* */
+function numifyHistory(d) {
+	if (!d || !d.series)
+		return d;
+	for (var i = 0; i < d.series.length; i++) {
+		var se = d.series[i];
+		if (se.summary)
+			numifyNode(se.summary);
+		if (se.points) {
+			for (var j = 0; j < se.points.length; j++)
+				numifyNode(se.points[j]);
+		}
+	}
+	return d;
+}
+
+/* get_status：overall / regions / targets[]
+ * （targets 与 regions 在下面按字段单独处理） */
+function numifyStatus(d) {
+	if (!d)
+		return d;
+	numifyNode(d.overall);
+	if (d.regions) {
+		for (var rk in d.regions)
+			numifyNode(d.regions[rk]);
+	}
+	if (d.targets) {
+		for (var i = 0; i < d.targets.length; i++) {
+			var t = d.targets[i];
+			numifyNode(t);
+			if (t.spark) {
+				for (var k = 0; k < t.spark.length; k++)
+					t.spark[k] = toNum(t.spark[k]);
+			}
+		}
+	}
+	return d;
+}
+
+/* get_statistics：targets[] 与 regions[] */
+function numifyStats(d) {
+	if (!d)
+		return d;
+	var i;
+	if (d.targets)
+		for (i = 0; i < d.targets.length; i++)
+			numifyNode(d.targets[i]);
+	if (d.regions)
+		for (i = 0; i < d.regions.length; i++)
+			numifyNode(d.regions[i]);
+	return d;
+}
+
 var api = {
 	getStatus: function(withSpark) {
-		return call('get_status', withSpark ? { spark: '1' } : {});
+		return call('get_status', withSpark ? { spark: '1' } : {}).then(numifyStatus);
 	},
 	getTargets: function() { return call('get_targets', {}); },
-	getHistory: function(o) { return call('get_history', strParams(o)); },
-	getStatistics: function(o) { return call('get_statistics', strParams(o)); },
+	getHistory: function(o) {
+		return call('get_history', strParams(o)).then(numifyHistory);
+	},
+	getStatistics: function(o) {
+		return call('get_statistics', strParams(o)).then(numifyStats);
+	},
 	getConfig: function() { return call('get_config', {}); },
 	/* 配置写入刻意不走后端 set_config / add_target：那些方法虽然也写
 	 * 同一份 uci 配置，但自成一个没有提交/回滚/触发器语义的平行通道。
