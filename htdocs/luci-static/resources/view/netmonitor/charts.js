@@ -181,6 +181,11 @@ return view.extend({
 					tag.classList.add(on ? 'is-on' : 'is-off');
 					tag.setAttribute('aria-pressed', on ? 'true' : 'false');
 					tag.setAttribute('aria-label', (s.name || s.id));
+					/* 把该目标在曲线上的颜色以自定义属性交给 CSS。
+					 * 选中态的边框 / 文字 / 底色都由它派生，从而保证
+					 * 「胶囊颜色 == 折线颜色 == 图例颜色」，三处不会漂移；
+					 * 颜色也不需要在样式表里重复硬编码。 */
+					tag.style.setProperty('--nm-chip-color', seriesColor);
 
 					var dot = common.el('span', 'nm-chip-dot');
 					dot.style.backgroundColor = seriesColor;

@@ -276,7 +276,7 @@ function parseStats(id, cap) {
  * 【为什么返回字符串而不是数字】
  *
  * 这是本次重构修复的一个后端缺陷。ucode 的 ubus/blobmsg 序列化器对 double
- * 一律以17 位有效数字输出，于是一个已经四舍五入好的值仍会带上浮点尾数：
+ * 一律以 17 位有效数字输出，于是一个已经四舍五入好的值仍会带上浮点尾数：
  *     fx(26.51, 2)  ->  26.510000000000002
  *     字面量 26.51   ->  26.510000000000002   （连字面量都如此）
  *     sprintf("%.2f", 26.51)  ->  "26.51"        （字符串则干净）
@@ -290,8 +290,12 @@ function parseStats(id, cap) {
  *   * 前后端对同一个值的字符串比较（断言、日志）会莫名其妙不相等。
  *
  * 因此这里统一改为返回**已格式化的字符串**：数值精度在服务端就固定下来，
- * 传输层不再引入误差。前端 common.fmt.* 拿到字符串后走 parseFloat，
- * 数值比较与算术依然正常（见 common.js 的 numOf / 浮点处理）。
+ * 传输层不再引入误差。前端 common.fmt.* / common.toNum 拿到字符串后转回
+ * 数值，数值比较与算术依然正常。
+ *
+ * 【重要】本函数只用在 JSON **输出边界**。参与聚合的中间值必须用
+ * fxNum() 保持数值类型 —— ucode 的 `string += number` 会静默得 0，
+ * 若把fx() 的结果再拿去求和，overall.current 会恒为 "0.00"。
  *
  * 注意 ucode 的 int / double 双类型：位运算 `|` 的结果是 int，而
  * ucode 的 int / int 是「整除」——设备实测 8/10 == 0、2530/100 == 25。
@@ -571,6 +575,21 @@ function getTargets(u) {
 	return out;
 }
 
+/* 返回**数值**（已按位数舍入），不是字符串。
+ *
+ * 这些值会被上层聚合复用：get_status 要对各目标的 latency / loss / p95
+ * 求算术平均（agg.lat_sum += st.latency 等）。若这里就交给 fx() 输出成
+ * 字符串，ucode 的字符串参与 `+=` 运算会静默得 0，导致
+ * overall.current / regions.avg 恒为 "0.00" —— 这是 fx() 改为返回字符串
+ * 后引入的回归。格式化统一推迟到 JSON 输出边界（get_status 里逐字段
+ * 调 fx()），内部一律保持数值。 */
+function fxNum(v, d) {
+	if (v == null)
+		return null;
+	let m = (d == 1) ? 10 : 100;
+	return ((v * m + 0.5) | 0) / (m * 1.0);
+}
+
 function statOf(id, cfg, cap) {
 	let st = parseStats(id, cap);
 	let s = readState(id);
@@ -595,15 +614,15 @@ function statOf(id, cfg, cap) {
 	return {
 		count: st.count,
 		ok: st.ok,
-		latency: fx(cur, 2),
-		avg: fx(avg, 2),
-		min: fx(st.min, 2),
-		max: fx(st.max, 2),
-		p50: fx(p50, 2),
-		p95: fx(p95, 2),
-		p99: fx(p99, 2),
-		loss: fx(loss, 1),
-		success_rate: fx((st.count > 0) ? (st.ok * 100.0 / st.count) : 0, 1),
+		latency: fxNum(cur, 2),
+		avg: fxNum(avg, 2),
+		min: fxNum(st.min, 2),
+		max: fxNum(st.max, 2),
+		p50: fxNum(p50, 2),
+		p95: fxNum(p95, 2),
+		p99: fxNum(p99, 2),
+		loss: fxNum(loss, 1),
+		success_rate: fxNum((st.count > 0) ? (st.ok * 100.0 / st.count) : 0, 1),
 		streak_fail: s.streak_fail,
 		streak_ok: s.streak_ok,
 		last_check: s.last_check,
@@ -804,6 +823,31 @@ const methods = {
 			else
 				health = 'good';
 
+			/* 输出边界统一格式化：list 在上面全程以数值参与聚合
+			 * （lat_sum / loss_sum / p95_sum），此处才把浮点字段转成
+			 * 字符串，规避 blobmsg 对 double 输出 17 位有效数字的问题。
+			 * 顺序很重要——提前转字符串会让 `+=` 静默得 0。*/
+			let outList = [];
+			for (let i = 0; i < length(list); i++) {
+				let it = list[i];
+				it.latency = fx(it.latency, 2);
+				it.avg = fx(it.avg, 2);
+				it.min = fx(it.min, 2);
+				it.max = fx(it.max, 2);
+				it.p50 = fx(it.p50, 2);
+				it.p95 = fx(it.p95, 2);
+				it.p99 = fx(it.p99, 2);
+				it.loss = fx(it.loss, 1);
+				it.success_rate = fx(it.success_rate, 1);
+				if (it.spark != null) {
+					let sp = [];
+					for (let k = 0; k < length(it.spark); k++)
+						push(sp, it.spark[k] == null ? null : fx(it.spark[k], 2));
+					it.spark = sp;
+				}
+				push(outList, it);
+			}
+
 			return {
 				running: serviceRunning(),
 				tick: tick,
@@ -822,7 +866,7 @@ const methods = {
 					fail_warn: num(cfg.fail_warn),
 					fail_critical: num(cfg.fail_critical)
 				},
-				targets: list
+				targets: outList
 			};
 		}
 	},
@@ -882,6 +926,14 @@ const methods = {
 
 				pts = aggregate(pts, maxp);
 
+				/* points 直接交给图表消费，同样在输出边界格式化，
+				 * 避免 blobmsg 把 double 展开成 17 位有效数字。 */
+				for (let pi = 0; pi < length(pts); pi++) {
+					pts[pi].l = fx(pts[pi].l, 2);
+					pts[pi].mn = fx(pts[pi].mn, 2);
+					pts[pi].mx = fx(pts[pi].mx, 2);
+				}
+
 				let st = statOf(t.id, cfg, cap);
 				push(series, {
 					id: t.id,
@@ -891,9 +943,9 @@ const methods = {
 					label: t.label,
 					enabled: t.enabled,
 					summary: {
-						avg: st.avg, min: st.min, max: st.max,
-						p95: st.p95, loss: st.loss,
-						success_rate: st.success_rate, samples: st.count
+						avg: fx(st.avg, 2), min: fx(st.min, 2), max: fx(st.max, 2),
+						p95: fx(st.p95, 2), loss: fx(st.loss, 1),
+						success_rate: fx(st.success_rate, 1), samples: st.count
 					},
 					points: pts
 				});

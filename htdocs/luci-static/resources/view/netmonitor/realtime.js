@@ -379,14 +379,25 @@ return view.extend({
 				' · ' + _('界面刷新') + ': ' + refresh + 's';
 		}
 
+		/* 首次加载标记。
+		 *
+		 * update() 在 render() 末尾被同步调用一次，那时 LuCI 还没把 root
+		 * 挂到文档上，root.isConnected 为 false。而 poll 触发的后续调用
+		 * 是页面已挂载后才发生的。两者必须区分：
+		 *   - 首次调用：此时 root 尚未入文档，不能据此判定「页面已卸载」；
+		 *     若误判会立刻自注销并短路返回，latest 永远拿不到数据，
+		 *     表格与卡片流全部空白（只剩工具栏的几十个字符）。
+		 *   - 轮询调用：root.isConnected 为 false 才真正代表页面被 SPA
+		 *     路由换掉，此时自注销，避免访问 N 次累积 N 路轮询打 rpcd。
+		 */
+		var firstRun = true;
+
 		function update() {
-			/* 与 settings.js 同一处缺陷：LuCI 是 SPA，切页不清理 poll 队列，
-			 * 本闭包无人持有引用因而永远注销不掉，访问 N 次就有 N 路轮询
-			 * 一起打 rpcd。DOM 已离开文档即代表页面卸载，此刻自注销。 */
-			if (!root.isConnected) {
+			if (!firstRun && !root.isConnected) {
 				poll.remove(update);
 				return Promise.resolve();
 			}
+			firstRun = false;
 			if (paused) return Promise.resolve();
 			return common.api.getStatus(false).then(function(d) {
 				latest = d;

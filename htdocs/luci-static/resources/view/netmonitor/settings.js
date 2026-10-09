@@ -334,16 +334,23 @@ return view.extend({
 		svcCard.appendChild(clearRow);
 		page.appendChild(svcCard);
 
+		/* 首次加载标记：与 realtime.js 同理，refreshSvc 在 render() 末尾被
+		 * 同步调用一次，此时 root 尚未挂到文档、isConnected 为 false。
+		 * 若不加区分，首次调用就会自注销并短路，服务状态条永远停在初始
+		 * 文案（「启动/停止」按钮的可用态也不跟随实时运行态）。 */
+		var svcFirstRun = true;
+
 		function refreshSvc() {
 			/* LuCI 是 SPA：切页只替换 view 容器，不会清空 poll 队列。
 			 * 本闭包除了注册点外无人持有引用，页面离开后既没人调用
-			 * poll.remove 也拿不到引用，10 秒轮询会一直打 rpcd ——
-			 * 访问 N 次就有 N 个并发。承载的 DOM 已离开文档即说明页面
-			 * 已被卸载，此刻自注销。 */
-			if (!root.isConnected) {
+			 * poll.remove 也拿不到引用，轮询会一直打 rpcd —— 访问 N 次
+			 * 就有 N 个并发。承载的 DOM 已离开文档即说明页面已被卸载，
+			 * 此时自注销。 */
+			if (!svcFirstRun && !root.isConnected) {
 				poll.remove(refreshSvc);
 				return Promise.resolve();
 			}
+			svcFirstRun = false;
 			return common.api.serviceStatus().then(function(d) {
 				common.clear(svcIcon);
 				svcIcon.appendChild(common.svgBox(icons.service(!!d.running, 30), ''));

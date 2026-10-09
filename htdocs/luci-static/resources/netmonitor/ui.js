@@ -210,7 +210,6 @@ function dialog(opts) {
 	var host = opts.host || document.body;
 
 	var mask = el('div', 'nm-dlg-mask');
-	var wrap = el('div', 'nm-dlg-wrap');
 	var box = el('div', 'nm-dlg');
 	box.setAttribute('role', 'dialog');
 	box.setAttribute('aria-modal', 'true');

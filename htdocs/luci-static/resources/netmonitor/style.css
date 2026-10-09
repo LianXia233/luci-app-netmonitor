@@ -687,7 +687,6 @@
 
 /* ---------------------------------------------------------------- 控件 */
 
-.nm-btn,
 .nm-select,
 .nm-input {
 	font: inherit;
@@ -701,41 +700,10 @@
 	box-sizing: border-box;
 }
 
-.nm-btn {
-	cursor: pointer;
-	transition: transform 0.12s ease, background 0.15s ease;
-}
-
-.nm-btn:hover { background: var(--nm-card-hi); }
-.nm-btn:active { transform: translateY(1px); }
-
-/* 主按钮：--nm-accent 一律带字面回退值。
- * 变量缺失时（例如被移植到别的容器里）回退到与默认主题一致的蓝色，
- * 而不是让 background 整条失效变成透明。 */
-.nm-btn-primary {
-	background: var(--nm-accent, #2f6fed);
-	border-color: var(--nm-accent, #2f6fed);
-	color: #fff;
-}
-
-/* .nm-btn:hover 会把底色刷成 --nm-card-hi（浅色），若不覆盖，
- * 主按钮一悬停就变成「白字 + 浅底」，同样看不见。 */
-.nm-btn-primary:hover {
-	background: color-mix(in srgb, var(--nm-accent, #2f6fed) 88%, #000 12%);
-	border-color: color-mix(in srgb, var(--nm-accent, #2f6fed) 88%, #000 12%);
-	color: #fff;
-}
-
-.nm-btn-danger {
-	color: var(--nm-bad);
-	border-color: color-mix(in srgb, var(--nm-bad) 45%, transparent);
-}
-
-.nm-btn-sm {
-	padding: 3px 8px;
-	min-height: 26px;
-	font-size: 12px;
-}
+/* 按钮样式统一在文件末尾的「原生 UI 组件」段定义（.nm-btn 系列）。
+ * 此处刻意不再重复：同一个类被定义两次时，后写的规则会静默覆盖前者，
+ * 而「主题色」与「变体」分处两处时优先级相同、书写顺序又不可见，
+ * 极易出现「危险按钮被文本变体的颜色盖掉」这类问题（已实际发生过）。 */
 
 .nm-select { min-width: 120px; }
 .nm-input { min-width: 140px; }
@@ -1322,12 +1290,20 @@
 
 /* 原生开关（替代 t-switch）。
  *
- * 自 v1.4.2 起开关控件统一改为原生 checkbox + 纯 CSS 滑块：appearance:none
- * 抹掉原生勾选框，用 ::before 画滑块。只驱动 background-color / transform，
- * 符合本文件性能约束；勾选态轨道用品牌色，滑块右移 20px（轨道 44px - 滑块
- * 20px - 2*2px 边距）。设置页 / 目标表格 / 卡片 / 弹窗共用同一套样式。
- * 焦点环复用下方 .nm-root input[type="checkbox"]:focus-visible 规则。 */
-.nm-switch {
+ * 开关控件统一改为原生 checkbox + 纯 CSS 滑块：appearance:none 抹掉原生
+ * 勾选框，用 ::before 画滑块。只驱动 background-color / transform，符合本文件
+ * 性能约束；勾选态轨道用品牌色，滑块右移 20px（轨道 44px - 滑块 20px - 2*2px
+ * 边距）。设置页 / 目标表格 / 卡片 / 弹窗共用同一套样式。
+ * 焦点环复用下方 .nm-root input[type="checkbox"]:focus-visible 规则。
+ *
+ * 选择器必须写成 input[type="checkbox"].nm-switch 而不能只写 .nm-switch：
+ * LuCI 主题（Aurora main.css）里有
+ *     input[type="radio"], input[type="checkbox"] { width: calc(var(--spacing)*4) }
+ * 即 (元素+属性) 优先级 0,1,1，而单类选择器只有 0,1,0 —— 主题规则胜出，
+ * 实测把开关从 44x24 压成 16x16：圆角与底色仍然生效（主题没定义这两项），
+ * 于是渲染成一个 16px 蓝色圆点，20x20 的白色滑块 ::before 直接溢出容器，
+ * 开关在视觉上完全失效。加上元素+属性前缀后优先级变为 0,2,1，稳定胜出。 */
+input[type="checkbox"].nm-switch {
 	appearance: none;
 	-webkit-appearance: none;
 	width: 44px;
@@ -1345,7 +1321,7 @@
 	transition: background-color 0.15s ease;
 }
 
-.nm-switch::before {
+input[type="checkbox"].nm-switch::before {
 	content: "";
 	position: absolute;
 	top: 2px;
@@ -1358,15 +1334,15 @@
 	transition: transform 0.15s ease;
 }
 
-.nm-switch:checked {
+input[type="checkbox"].nm-switch:checked {
 	background: var(--nm-accent, #2f6fed);
 }
 
-.nm-switch:checked::before {
+input[type="checkbox"].nm-switch:checked::before {
 	transform: translateX(20px);
 }
 
-.nm-switch:disabled {
+input[type="checkbox"].nm-switch:disabled {
 	opacity: 0.5;
 	cursor: not-allowed;
 }
@@ -1498,12 +1474,78 @@
 	gap: 8px;
 }
 
+/* 目标多选胶囊（可切换的开关）。
+ *
+ * 完整样式在此定义。迁移自 TDesign 的 t-tag 时曾只保留了布局三行，
+ * 漏掉选中态与圆点，实测后果：
+ *   · .nm-chip-dot 无任何规则 -> getBoundingClientRect() 为 0x0，圆点
+ *     完全不可见；
+ *   · .is-on / .is-off 无规则 -> 选中与未选中渲染结果完全相同。
+ * 于是图表页的目标胶囊全部长成一个样，无法分辨哪个目标已选中、
+ * 也无法把胶囊与折线颜色对应起来。
+ *
+ * 目标色由 charts.js 通过 --nm-chip-color 注入（与折线、图例同源，
+ * 都取自 common.palette 的同一索引），CSS 只负责把变量应用到
+ * 边框 / 文字 / 底色，不在样式层硬编码任何具体颜色。 */
 .nm-chip-tag {
 	cursor: pointer;
 	user-select: none;
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
+	padding: 5px 12px;
+	min-height: 32px;
+	box-sizing: border-box;
+	font: inherit;
+	font-size: 13px;
+	line-height: 1.4;
+	white-space: nowrap;
+	border-radius: 999px;
+	border: 1px solid var(--nm-border, rgba(120, 130, 150, 0.28));
+	background: var(--nm-card-hi, #ffffff);
+	color: var(--nm-fg, #20242c);
+	transition: background-color .15s ease, border-color .15s ease, opacity .15s ease;
+}
+
+/* 圆点：必须显式给宽高，否则 span 无内容时尺寸为 0 */
+.nm-chip-tag .nm-chip-dot {
+	display: inline-block;
+	width: 9px;
+	height: 9px;
+	border-radius: 50%;
+	flex: 0 0 auto;
+}
+
+/* 选中：边框与文字取目标色，底色为同色极淡填充 */
+.nm-chip-tag.is-on {
+	border-color: var(--nm-chip-color, var(--nm-accent, #2f6fed));
+	color: var(--nm-chip-color, var(--nm-accent, #2f6fed));
+	background: color-mix(in srgb, var(--nm-chip-color, var(--nm-accent, #2f6fed)) 10%, transparent);
+}
+
+.nm-chip-tag.is-on:hover {
+	background: color-mix(in srgb, var(--nm-chip-color, var(--nm-accent, #2f6fed)) 18%, transparent);
+}
+
+/* 未选中：整体置灰、圆点去色，与选中态形成明确对比 */
+.nm-chip-tag.is-off {
+	opacity: .55;
+	border-color: var(--nm-border, rgba(120, 130, 150, 0.28));
+	background: transparent;
+	color: var(--nm-muted, #7b8494);
+}
+
+.nm-chip-tag.is-off .nm-chip-dot {
+	filter: grayscale(1);
+}
+
+.nm-chip-tag.is-off:hover {
+	opacity: .8;
+}
+
+.nm-chip-tag:focus-visible {
+	outline: 2px solid var(--nm-accent, #2f6fed);
+	outline-offset: 2px;
 }
 
 /* 底部数据源提示条（图表页） */
@@ -2138,6 +2180,33 @@
 	min-height: 26px;
 }
 
+/* 主题色 × 文本变体的组合必须显式声明。
+ *
+ * 原因：`.nm-btn-danger` 与 `.nm-btn-text` 同为单类选择器（优先级 0,1,0），
+ * 谁写在后面谁生效。文本变体为去掉边框底色必须声明 color/background，
+ * 于是「危险 + 文本」的按钮（目标管理页的「删除」）颜色被文本变体覆盖，
+ * 实测渲染成与「编辑 / 复制」相同的强调蓝 rgb(47,111,237)，而不是
+ * 警示红 rgb(207,68,55) —— 危险操作在视觉上完全无法与普通操作区分。
+ *
+ * 这里用双类选择器（优先级 0,2,0）显式抬高主题色，与书写顺序解耦。 */
+.nm-btn-danger.nm-btn-text {
+	color: var(--nm-bad, #cf4437);
+}
+
+.nm-btn-danger.nm-btn-text:hover:not([disabled]):not(.is-disabled) {
+	background: color-mix(in srgb, var(--nm-bad, #cf4437) 12%, transparent);
+	color: var(--nm-bad, #cf4437);
+}
+
+.nm-btn-primary.nm-btn-text {
+	color: var(--nm-accent, #2f6fed);
+}
+
+.nm-btn-primary.nm-btn-text:hover:not([disabled]):not(.is-disabled) {
+	background: color-mix(in srgb, var(--nm-accent, #2f6fed) 12%, transparent);
+	color: var(--nm-accent, #2f6fed);
+}
+
 .nm-btn-icon {
 	display: inline-flex;
 	align-items: center;
@@ -2398,4 +2467,92 @@
 	align-items: center;
 	gap: 10px;
 	margin: 10px 0;
+}
+
+
+/* ================================================================ 补遗样式
+ *
+ * 以下类此前在 JS 里被引用、但样式表中从未定义（v1.4.2 起即缺失），
+ * 均以 getBoundingClientRect() 实测确认过渲染异常。集中补在这里，
+ * 并保留判定依据，避免日后被当作冗余删除。
+ */
+
+/* ------------------------------------------------------------ 状态 LED
+ *
+ * 实时页表格首列的「动态呼吸 LED」。缺失时的实测结果：
+ *   .nm-led-box    -> { w: 14, h: 0 }（高度塌陷）
+ *   .nm-led-center -> { w: 0,  h: 0 }、背景透明
+ * 整个状态指示列渲染为空，四个 LED 全部不可见。
+ *
+ * 配色沿用全局等级体系（good / warn / bad / off），呼吸与扩散直接复用
+ * 既有的 @keyframes（nm-pulse-soft / nm-ripple），不新增动画定义。 */
+.nm-led-box {
+	position: relative;
+	display: inline-block;
+	width: 14px;
+	height: 14px;
+	flex: 0 0 auto;
+	vertical-align: middle;
+	/* 默认取「停用」色；状态类负责覆盖 */
+	--nm-led-color: var(--nm-muted, #7b8494);
+}
+
+.nm-led-center {
+	position: absolute;
+	inset: 3px;
+	border-radius: 50%;
+	background: var(--nm-led-color);
+	box-shadow: 0 0 6px color-mix(in srgb, var(--nm-led-color) 70%, transparent);
+	animation: nm-pulse-soft 2.4s ease-in-out infinite;
+}
+
+.nm-led-ping-ring {
+	position: absolute;
+	inset: 0;
+	border-radius: 50%;
+	border: 1.5px solid var(--nm-led-color);
+	transform-origin: center;
+	animation: nm-ripple 2.4s ease-out infinite;
+}
+
+.nm-led-off  { --nm-led-color: var(--nm-muted, #7b8494); }
+.nm-led-good { --nm-led-color: var(--nm-ok, #2e9e5b); }
+.nm-led-warn { --nm-led-color: var(--nm-warn, #d69a1a); }
+.nm-led-bad  { --nm-led-color: var(--nm-bad, #cf4437); }
+
+/* 停用目标不做呼吸动效：静止的灰点是「无监控」的正确表达，
+ * 闪烁会让用户误以为该目标正在被探测。 */
+.nm-led-off > .nm-led-center,
+.nm-led-off > .nm-led-ping-ring {
+	animation: none;
+}
+
+.nm-led-off > .nm-led-ping-ring {
+	opacity: 0;
+}
+
+/* 尊重系统的「减少动态效果」偏好 */
+@media (prefers-reduced-motion: reduce) {
+	.nm-led-center,
+	.nm-led-ping-ring {
+		animation: none;
+	}
+}
+
+/* ------------------------------------------------------------ 表格次要文本 */
+.nm-txt-sub {
+	color: var(--nm-muted, #7b8494);
+	font-size: 12px;
+	white-space: nowrap;
+}
+
+/* ------------------------------------------------------------ 区域页图标呼吸 */
+.nm-svg-soft-pulse {
+	animation: nm-pulse-soft 3.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.nm-svg-soft-pulse {
+		animation: none;
+	}
 }
