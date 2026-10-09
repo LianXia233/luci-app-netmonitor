@@ -233,7 +233,7 @@ luci-app-netmonitor/
 │   └── zh_Hans/luci-app-netmonitor.po
 ├── tests/                                          # 自动化断言测试套件
 │   ├── test_netmon_daemon.sh                       # 守护进程核心算法单元测试 (94 assertions)
-│   └── test_icons.js                               # SVG 动态图标与渲染断言 (442 assertions)
+│   └── test_icons.js                               # SVG 动态图标与渲染断言 (437 assertions)
 ├── root/                                           # 系统根预置资产
 │   ├── etc/
 │   │   ├── init.d/netmonitor                       # procd 进程托管脚本
@@ -248,10 +248,13 @@ luci-app-netmonitor/
 └── htdocs/luci-static/resources/
     ├── netmonitor/
     │   ├── style.css                               # 限定于 .nm- 命名空间的自适应主题样式
-    │   ├── common.js                               # RPC 数据格式化与异常处理中间层
-    │   ├── chart.js                                # 自研轻量级 SVG 时序图表库
-    │   ├── icons.js                                # 24 个数据驱动内嵌 SVG 动态矢量图标
-    │   └── ui.js                                   # 原生 UI 组件层：按钮 / 标签 / 提示条 / 弹窗（无第三方依赖）
+    │   ├── format.js                               # 纯函数层：数值格式化 / 状态→类名文案 / 后端报错本地化（零依赖）
+    │   ├── api.js                                  # 数据访问层：RPC 调用 / 字符串数值归一化 / UCI 读改写与提交
+    │   ├── widgets.js                              # 业务组件层：目标卡 / KPI 卡 / 图标卡 / 横幅 / 迷你曲线
+    │   ├── chart.js                                # 自研轻量级 SVG 时序图表库（含配色 palette）
+    │   ├── icons.js                                # 26 个数据驱动内嵌 SVG 动态矢量图标
+    │   ├── ui.js                                   # 原生 UI 组件层：按钮 / 标签 / 提示条 / 弹窗（无第三方依赖）
+    │   └── common.js                               # 资源加载（样式表注入 / i18n）+ 向后兼容聚合转发
     └── view/netmonitor/                            # 纯客户端渲染单页视图
         ├── overview.js   realtime.js   charts.js
         ├── regions.js    history.js    targets.js  settings.js

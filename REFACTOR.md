@@ -72,7 +72,7 @@ sprintf("%.2f", 26.51)         -> "26.51"   （字符串则干净）
 即字面量都会被展开，算式层面无法消除。
 
 **修复**：`fx()` 改为返回**已格式化的字符串**，精度在服务端固化。
-前端新增 `common.toNum()` 统一转数值后再做算术与比较。
+前端新增 `format.toNum()`（经 `common.toNum` 转发）统一转数值后再做算术与比较。
 修复后：`"current": "20.27"`、`"avg": "23.74"`、`"p95": "31.55"`。
 
 ### 1.4 批量操作整批失败（中等问题，已修复）
@@ -174,7 +174,7 @@ LUCI_MINIFY_CSS:=1   # 原为 0
 | 重复项 | 原状 | 现状 |
 |---|---|---|
 | 按钮工厂 | 3 份（settings `svcBtn` / targets `toolBtn` / `mini`） | 统一为 `ui.button()` |
-| 弹窗脚手架 | 2 份（`common.confirmDialog` / targets `openEditor`） | 统一为 `ui.dialog()` |
+| 弹窗脚手架 | 2 份（原 `common.confirmDialog` / targets `openEditor`） | 统一为 `ui.dialog()`；`common.confirmDialog` 现仅为指向 `ui.confirm` 的兼容转发，零调用点 |
 | 勾选框构造 | targets 内逐字重复 2 份 | `selectCheckbox()` |
 | 启用开关 | targets 内逐字重复 2 份 | `enabledSwitch()` |
 | 下拉框工厂 | settings `enumControl` / targets `tselect` | `selectInput()` |
@@ -248,8 +248,11 @@ cd probe && node xss.js       # 第 10 项
 新增  htdocs/luci-static/resources/netmonitor/ui.js            原生组件层
 删除  htdocs/luci-static/resources/netmonitor/tdesign/         -7.4 MB
 
-修改  htdocs/luci-static/resources/netmonitor/common.js        移除 TDesign 注入；el() 改 textContent；
-                                                               confirmDialog 收敛；新增 toNum
+修改  htdocs/luci-static/resources/netmonitor/common.js        移除 TDesign 注入；1.5.6 起收敛为
+                                                               资源加载 + 兼容转发层（156 行）
+新增  htdocs/luci-static/resources/netmonitor/format.js        纯函数层，自 common.js 拆出
+新增  htdocs/luci-static/resources/netmonitor/api.js           数据访问层，自 common.js 拆出
+新增  htdocs/luci-static/resources/netmonitor/widgets.js       业务组件层，自 common.js 拆出
 修改  htdocs/luci-static/resources/netmonitor/style.css        TDesign 选择器 -> 原生类；新增组件样式
 修改  htdocs/luci-static/resources/view/netmonitor/*.js         7 个页面全部改造
 修改  root/usr/share/rpcd/ucode/luci.netmonitor                fx() 返回格式化字符串

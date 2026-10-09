@@ -14,21 +14,86 @@
 条目分类：`新增` / `变更` / `修复` / `移除` / `弃用` / `安全`。
 
 
+## [1.5.7] - 2026-10-10
+
+本版源自一次全仓冗余审查，处理其中**证据确凿、可静态验证**的部分。
+
+### 移除
+
+- **删除 `style.css` 中被取代的旧动画类 `nm-a-*`（11 个类 + 5 个孤儿 keyframes，共 76 行）**。
+  图标动画实际使用的是 `nm-an-*`（`nm-an-dash` / `nm-an-pulse` / `nm-an-ring` /
+  `nm-an-blink` / `nm-an-bar` / `nm-an-spin` / `nm-an-dash-rev`，共 7 个，定义在
+  style.css 且被 JS 引用 46 次）。`nm-a-*` 是更早一版的命名，重构换名后
+  整套遗留下来，**全仓零引用**。
+
+  删除前逐条核对了 keyframes 的归属，避免误删仍在用的：
+
+  | keyframes | 引用者 | 处理 |
+  |---|---|---|
+  | `nm-spin` / `nm-move` / `nm-vanish` / `nm-alarm` / `nm-wave` | **仅** `.nm-a-*` | 随类一并删除 |
+  | `nm-pulse` | `.nm-an-pulse`、`.nm-svg-radar-*`、`.nm-led-center` | 保留 |
+  | `nm-dash` | `.nm-an-dash`、`.nm-an-dash-rev` | 保留 |
+  | `nm-ripple` | `.nm-led-ping-ring` | 保留 |
+  | `nm-blink` | `.nm-an-blink` | 保留 |
+
+  删除后校验：`nm-a-` 归零、`nm-an-` 7 条完整、在用的 keyframes 全部健在、大括号平衡。
+
+### 修复
+
+- **本地预览页（`tests/preview/index.html`）模块表缺 4 个模块，打开必然白屏**。
+  预览页用自己的加载器按 `'require x as y'` 递归组装模块，
+  而 `SOURCES` 表是**手工维护**的，`loadModule()` 遇到未登记模块直接
+  `Promise.reject(new Error('未知模块: ' + name))` —— 漏一个就整页白屏。
+
+  | 缺失模块 | 性质 |
+  |---|---|
+  | `netmonitor.ui` | **既存缺陷**：`common.js` 一直 require 它，而表中从未登记 |
+  | `netmonitor.format` / `netmonitor.api` / `netmonitor.widgets` | 1.5.6 拆分引入 |
+
+  已补齐，并在文件头注释里写明「漏一个就白屏」的约束。
+  实测：无头 Chromium 加载预览页，渲染出 **31 个 SVG 图标节点 + 115 个卡片节点**，
+  总览页数据完整（延迟 / 丢包 / 分区 / 目标卡全渲染），**零运行时错误**。
+
+### 文档
+
+- `README.md`：目录树补上 `format.js` / `api.js` / `widgets.js`，`common.js` 的
+  描述由「RPC 数据格式化与异常处理中间层」改为「资源加载 + 向后兼容聚合转发」；
+  图标数 24 → 26；测试断言数 442 → 437（均为实测值）。
+- `REFACTOR.md`：`toNum` 归属改指 `format.js`；`confirmDialog` 现状更新为
+  「兼容转发、零调用点」；变更文件清单补上拆分出的三个模块。
+- `tests/preview/index.html`：去除「TDesign 重构预览」等过时文案（1.5.0 起已移除）。
+- `CHANGELOG.md`：1.5.6 节里的模块行数由估算值改为实测值（156 / 214 / 344 / 247）。
+
+### 审查中确认、但本次**未处理**的冗余
+
+以下内容证据同样明确，但涉及行为变更或需要实机验证，留待后续单独处理，
+此处登记以免遗失：
+
+- **图标库 5 个导出零调用**：`health` / `liveBars` / `responsive` / `dot` / `iface`。
+  这些并非「没用」，而是页面各有一份自绘替代（如 `overview.js` 的
+  `buildHeroSvg()` / `buildLiveBarsSvg()`）。正确方向是**把自绘收敛回 icons.js**
+  而不是删图标——与「图标必须始终能表达状态」的目标相悖，且 `test_icons.js`
+  的 437 条断言依赖它们。
+- **页面横向重复**：`makeSelect` 下拉工厂 ×4、`makeStripCard` 速览卡 ×3（其中两份
+  逐字相同）、等级阈值判定 ×4（三份 md5 相同）、空状态/错误提示 ×8。
+- **后端零调用**：`netmon-daemon.sh` 的 `zeros_hist()`、ucode 的 `fxInt()`。
+  改动后端需实机验证，不在静态审查范围内处理。
+
 ## [1.5.6] - 2026-10-10
 
 ### 变更
 
-- **`common.js` 按职责拆分为三个专职模块**（809 行 → 聚合层 130 行 + 三个专职模块）。
+- **`common.js` 按职责拆分为三个专职模块**（809 行 → 聚合层 156 行 + 三个专职模块）。
   此前 `common.js` 同时装着六类互不相干的职责，是典型的「上帝模块」：
   改任何一个格式化函数、任何一个 RPC 方法、任何一张卡片，都要动同一个文件，
   也无法单独测试。现按职责边界拆开：
 
   | 模块 | 职责 | 依赖 | 行数 |
   |---|---|---|---|
-  | `format.js` | 数值→文本、状态→类名/文案、后端报错→可翻译文案 | **无**（纯函数，不碰 DOM） | 约 200 |
-  | `api.js` | RPC 调用、字符串数值归一化、UCI 读改写与提交 | rpc / uci / format | 约 300 |
-  | `widgets.js` | 目标卡 / KPI 卡 / 图标卡 / 横幅 / 迷你曲线 / 通知 | ui / icons / format | 约 250 |
-  | `common.js` | 资源加载（样式表注入、i18n）+ **向后兼容转发** | 上述三者 + icons + ui | 约 130 |
+  | `format.js` | 数值→文本、状态→类名/文案、后端报错→可翻译文案 | **无**（纯函数，不碰 DOM） | 214 |
+  | `api.js` | RPC 调用、字符串数值归一化、UCI 读改写与提交 | rpc / uci / format | 344 |
+  | `widgets.js` | 目标卡 / KPI 卡 / 图标卡 / 横幅 / 迷你曲线 / 通知 | ui / icons / format | 247 |
+  | `common.js` | 资源加载（样式表注入、i18n）+ **向后兼容转发** | 上述三者 + icons + ui | 156 |
 
   依赖方向严格单向，**无环**：
 

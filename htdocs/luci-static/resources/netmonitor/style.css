@@ -825,41 +825,13 @@
 	100% { transform: scale(1.35); opacity: 0; }
 }
 
-@keyframes nm-spin {
-	to { transform: rotate(360deg); }
-}
-
 @keyframes nm-dash {
 	to { stroke-dashoffset: -32; }
-}
-
-@keyframes nm-move {
-	0%   { transform: translateX(-6px); opacity: 0; }
-	15%  { opacity: 1; }
-	85%  { opacity: 1; }
-	100% { transform: translateX(46px); opacity: 0; }
-}
-
-@keyframes nm-vanish {
-	0%, 40% { opacity: 1; transform: translateX(0) scale(1); }
-	60%     { opacity: 0.35; transform: translateX(6px) scale(0.6); }
-	70%     { opacity: 0; transform: translateX(10px) scale(0.3); }
-	71%, 100% { opacity: 0; transform: translateX(-6px) scale(1); }
 }
 
 @keyframes nm-ripple {
 	0%   { transform: scale(0.6); opacity: 0.55; }
 	100% { transform: scale(1.9); opacity: 0; }
-}
-
-@keyframes nm-alarm {
-	0%, 100% { opacity: 0.25; transform: scale(1); }
-	50%      { opacity: 0.9; transform: scale(1.12); }
-}
-
-@keyframes nm-wave {
-	0%   { stroke-dashoffset: 0; }
-	100% { stroke-dashoffset: -48; }
 }
 
 @keyframes nm-blink {
@@ -868,54 +840,6 @@
 }
 
 .nm-svg { display: block; overflow: visible; }
-
-.nm-a-pulse > .nm-pulse-ring {
-	transform-origin: center;
-	animation: nm-pulse 2.6s ease-out infinite;
-}
-
-.nm-a-pulse > .nm-pulse-ring:nth-child(2) { animation-delay: 1.3s; }
-
-.nm-a-spin {
-	transform-origin: center;
-	animation: nm-spin 7s linear infinite;
-}
-
-.nm-a-dash {
-	stroke-dasharray: 6 10;
-	animation: nm-dash 2.4s linear infinite;
-}
-
-.nm-a-move {
-	animation: nm-move 2.2s ease-in-out infinite;
-}
-
-.nm-a-move-slow { animation-duration: 3.4s; }
-.nm-a-move-fast { animation-duration: 1.1s; }
-
-.nm-a-vanish {
-	animation: nm-vanish 2.4s ease-in-out infinite;
-}
-
-.nm-a-ripple > circle {
-	transform-origin: center;
-	animation: nm-ripple 2.8s ease-out infinite;
-}
-
-.nm-a-ripple > circle:nth-child(2) { animation-delay: 0.9s; }
-.nm-a-ripple > circle:nth-child(3) { animation-delay: 1.8s; }
-
-.nm-a-alarm {
-	transform-origin: center;
-	animation: nm-alarm 1.5s ease-in-out infinite;
-}
-
-.nm-a-wave {
-	stroke-dasharray: 10 14;
-	animation: nm-wave 3s linear infinite;
-}
-
-.nm-a-blink { animation: nm-blink 1.6s ease-in-out infinite; }
 
 /* ------------------------------------------------- 动态 SVG 图标（v3 动画集）
  *
