@@ -234,8 +234,7 @@ luci-app-netmonitor/
 ├── tests/                                          # 自动化断言测试套件
 │   ├── test_netmon_daemon.sh                       # 守护进程核心算法单元测试 (101 assertions)
 │   ├── test_icons.js                               # SVG 动态图标与渲染断言 (437 assertions)
-│   ├── preview/index.html                          # 本地离线预览页（无需路由器，假数据驱动）
-│   └── preview/screenshots/                        # 7 个视图页的效果截图
+│   └── preview/index.html                          # 本地离线预览页（无需路由器，假数据驱动）
 ├── root/                                           # 系统根预置资产
 │   ├── etc/
 │   │   ├── init.d/netmonitor                       # procd 进程托管脚本
