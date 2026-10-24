@@ -192,6 +192,15 @@ function alertBox(opts) {
  *   cancel: 按钮文案，默认「取消」
  *   onOk  : () => any|Promise。返回 false 阻止关闭（用于表单校验失败）
  *
+ * 【onOk 返回 false 时按钮不会自动禁用，调用方需自行守卫】
+ * ui.button 只在 onClick 返回 Promise 时才加 is-busy 并禁用按钮。若 onOk
+ * 返回 false（「校验未通过，保持弹窗打开」的惯用写法），本组件内部直接
+ * return，交回给 ui.button 的是 undefined，按钮因此在整段异步提交期间
+ * 保持可点——连点就会重复提交。
+ * 约定：走「onOk 自行异步收尾 + 返回 false」这种模式的调用方，
+ * 必须自己在闭包里加一道提交守卫（参见 view/netmonitor/targets.js
+ * 的 openEditor()，它在编辑器作用域内维护 submitting 标志）。
+ *
  * 关闭出口统一为 close()，并保证幂等：ESC、取消、遮罩点击、确定按钮
  * 四条路径都走它，且 close 后必定解除 keydown 监听并摘除节点。
  *

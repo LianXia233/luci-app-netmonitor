@@ -5,12 +5,12 @@
 **面向 OpenWrt 主线（Mainline）的高性能网络延迟与连通性实时监控系统**
 
 [![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg?style=flat-square)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.5.8-informational.svg?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.5.9-informational.svg?style=flat-square)](CHANGELOG.md)
 [![OpenWrt](https://img.shields.io/badge/OpenWrt-23.05%20%7C%2024.10%20%7C%2025.x-00A0D0.svg?logo=openwrt&logoColor=white&style=flat-square)](#-系统与版本兼容性)
 [![LuCI Architecture](https://img.shields.io/badge/LuCI-JS%20View%20%2B%20ucode%20RPC-FF6B35.svg?style=flat-square)](#-系统架构)
 [![Package arch](https://img.shields.io/badge/arch-all%20(PKGARCH%3Dall)-lightgrey.svg?style=flat-square)](#-快速安装与验证)
 [![Build](https://github.com/LianXia233/luci-app-netmonitor/actions/workflows/build.yml/badge.svg?style=flat-square)](https://github.com/LianXia233/luci-app-netmonitor/actions/workflows/build.yml)
-[![Tests](https://img.shields.io/badge/tests-538%20passing-2e9e5b.svg?style=flat-square)](#-测试与断言规范)
+[![Tests](https://img.shields.io/badge/tests-652%20passing-2e9e5b.svg?style=flat-square)](#-测试与断言规范)
 [![i18n](https://img.shields.io/badge/i18n-zh__Hans%20%7C%20en%20(100%25)-2e9e5b.svg?style=flat-square)](#-关键开发约定与工业级避坑指南)
 
 *基于 procd 常驻守护进程与轻量 tmpfs 直方图存储 · 关闭网页后台持续采样 · 拒绝虚假 0ms 延迟*
@@ -146,7 +146,7 @@ ubus call luci.netmonitor get_status
 | `interval` | `10` | `1 - 3600` (s) | 全局探测轮询间隔 |
 | `timeout` | `3` | `1 - 30` (s) | 单次检测超时阈值 |
 | `concurrency` | `5` | `1 - 50` | 并发执行探测的任务上限 |
-| `address_family` | `auto` | `auto` \| `ipv4` \| `ipv6` | 全局地址族路由偏好 |
+| `address_family` | `auto` | `auto` \| `ipv4` \| `ipv6` \| `both` | 全局地址族路由偏好（`both` = 先 IPv4、失败再 IPv6，任一栈可达即视为可达） |
 | `default_proto` | `icmp` | `icmp` \| `tcp` | 默认探测链路方式 |
 | `default_tcp_port` | `80` | `1 - 65535` | TCP 探测未指明端口时的回退端口 |
 | `persistence` | `0` | `0` \| `1` | Flash 聚合历史记录持久化（默认关闭以保护闪存） |
@@ -167,7 +167,7 @@ config target 'baidu'
     option label     '搜索服务'     # 自定义标签
     option proto     'icmp'        # 探测方式: icmp | tcp
     option tcp_port  '0'           # 0 表示沿用全局 default_tcp_port
-    option family    'auto'        # auto | ipv4 | ipv6 | both (目标级支持 both 双栈)
+    option family    'auto'        # auto | ipv4 | ipv6 | both（双栈：先 IPv4，失败再 IPv6）
     option interval  '0'           # 局部覆盖: 0 表示继承全局
     option timeout   '3'           # 局部覆盖: 超时时长
     option interface ''            # 绑定出口网卡 (如 wan, wwan)
@@ -232,8 +232,10 @@ luci-app-netmonitor/
 │   ├── gen_po.py                                   # 跨平台 AST 翻译提取与冲突检测工具
 │   └── zh_Hans/luci-app-netmonitor.po
 ├── tests/                                          # 自动化断言测试套件
-│   ├── test_netmon_daemon.sh                       # 守护进程核心算法单元测试 (101 assertions)
+│   ├── test_netmon_daemon.sh                       # 守护进程核心算法单元测试 (136 assertions)
 │   ├── test_icons.js                               # SVG 动态图标与渲染断言 (437 assertions)
+│   ├── test_frontend_guards.js                     # 前端防护与生命周期断言 (79 assertions)
+│   ├── check_ucode_syntax.sh                       # ucode 插件语法近似校验
 │   └── preview/index.html                          # 本地离线预览页（无需路由器，假数据驱动）
 ├── root/                                           # 系统根预置资产
 │   ├── etc/
@@ -370,15 +372,25 @@ LuCI 加载翻译时，`base.zh-cn.lmo` 的词频优先级高于插件。若插�
 项目在本地及 GitHub Actions CI 流水线中集成了多层自动化验证护栏：
 
 ```sh
-# 1. 运行守护进程核心逻辑单元测试 (101 assertions)
-# 涵盖: 异常错误分类、TSV 占位容错、分段直方图数学模型、TCP 握手判定
+# 1. 运行守护进程核心逻辑单元测试 (136 assertions)
+# 涵盖: 异常错误分类、TSV 占位容错、分段直方图数学模型、TCP 握手判定、
+#       双栈探测回退、--noproxy 参数形式、状态文件原子写、缓冲区裁剪、子进程回收
 sh tests/test_netmon_daemon.sh
 
 # 2. 运行 SVG 动态矢量图标自动化断言 (437 assertions)
 # 涵盖: 零三方依赖、数据变化敏感性、空值边界防御、视口尺寸阈值
 node tests/test_icons.js
 
-# 3. 运行静态翻译完整性与 AST 代码冲突扫描
+# 3. 运行前端防护与生命周期断言 (79 assertions)
+# 涵盖: 存储型 XSS 载荷、后端字符串数值归一化、布尔兼容、
+#       轮询随路由注销、图表实例表、请求竞态
+node tests/test_frontend_guards.js
+
+# 4. 校验 ucode 插件语法（用 node 近似解析；语法错会让 rpcd 加载失败，
+#    表现为所有 RPC「对象不存在」而不是一条编译错误）
+sh tests/check_ucode_syntax.sh
+
+# 5. 运行静态翻译完整性与 AST 代码冲突扫描
 python3 po/gen_po.py --audit
 ```
 

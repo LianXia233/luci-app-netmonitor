@@ -54,6 +54,8 @@ jobs:
             root/usr/libexec/netmonitor/netmon-daemon.sh \
             tests/test_netmon_daemon.sh \
             tests/test_icons.js \
+            tests/test_frontend_guards.js \
+            tests/check_ucode_syntax.sh \
             po/gen_po.py
           do
             mode=$(git ls-files -s "$f" | awk '{print $1}')
@@ -124,6 +126,26 @@ jobs:
           set -eu
           cd "$GITHUB_WORKSPACE/$NM_PKG"
           node tests/test_icons.js
+
+      # ucode 插件是整个后端的入口：语法错会让 rpcd 加载失败，
+      # 表现为所有 RPC 调用「对象不存在」而不是一条编译错误。
+      # 这里用 node 做近似解析挡住低级语法错误（详见脚本头注释）。
+      - name: Check ucode plugin syntax
+        shell: sh
+        run: |
+          set -eu
+          cd "$GITHUB_WORKSPACE/$NM_PKG"
+          sh tests/check_ucode_syntax.sh
+
+      # 前端防护与生命周期：存储型 XSS、后端字符串数值归一化、轮询随
+      # 路由注销、图表实例表、请求竞态。这五类缺陷都是「静态检查看不出来、
+      # 装上设备才发现」的，且此前的 CI 完全没有覆盖。
+      - name: Run frontend guard assertions
+        shell: sh
+        run: |
+          set -eu
+          cd "$GITHUB_WORKSPACE/$NM_PKG"
+          node tests/test_frontend_guards.js
 
   build:
     name: ${{ matrix.format }} @ ${{ matrix.sdk }}

@@ -47,20 +47,14 @@ return view.extend({
 		page.appendChild(cards);
 		page.appendChild(foot);
 
-		/* 阈值等级判定工具函数 */
-		function gradeOf(ms, th) {
-			if (ms == null || isNaN(ms)) return 'unknown';
-			th = th || {};
-			var ex = parseFloat(th.latency_excellent) || 50;
-			var gd = parseFloat(th.latency_good) || 100;
-			var fr = parseFloat(th.latency_fair) || 200;
-			var pr = parseFloat(th.latency_poor) || 500;
-			if (ms <= ex) return 'excellent';
-			if (ms <= gd) return 'good';
-			if (ms <= fr) return 'fair';
-			if (ms <= pr) return 'poor';
-			return 'severe';
-		}
+		/* 阈值等级判定：统一走 common.gradeForLatency()。
+		 *
+		 * 【本次统一】本页此前自带一份 `ms <= 阈值` 的实现，而后端
+		 * luci.netmonitor 的 gradeOf() 用的是 `lat >= 阈值`——两者相差一个
+		 * 等号，延迟恰好等于阈值时本页显示「优秀」而后端给的是「良好」。
+		 * 与它同名的函数在 realtime / history / charts 三页还各有一份，
+		 * 现在一并收敛到 format.js 的单一实现。 */
+		var gradeOf = common.gradeForLatency;
 
 		/* 动态 SVG 徽章生成器：多层雷达扩散 + 旋转光环 + 状态核心 */
 		function buildHeroSvg(state) {
@@ -293,10 +287,12 @@ return view.extend({
 			var v6 = false;
 			for (var j = 0; j < list.length; j++) {
 				var h = String(list[j].host || '');
-				if (list[j].family === 'ipv6' || h.indexOf(':') >= 0) v6 = true;
+				/* both 会让该目标同时走两个栈，因此同样计入 IPv6 */
+				if (list[j].family === 'ipv6' || list[j].family === 'both' ||
+					h.indexOf(':') >= 0) v6 = true;
 			}
 			var v4 = (fam !== 'ipv6');
-			if (fam === 'ipv6') v6 = true;
+			if (fam === 'ipv6' || fam === 'both') v6 = true;
 			live.appendChild(makeGlassCard(_('Dual stack'),
 				(v4 && v6) ? 'IPv4 + IPv6' : (v6 ? 'IPv6' : 'IPv4'),
 				_('Address family') + ': ' + fam, icons.dualStack(fam, v4, v6, 44)));
@@ -379,7 +375,28 @@ return view.extend({
 			renderFoot(d);
 		}
 
+		/* 首次加载标记。
+		 *
+		 * 与 realtime.js / settings.js 同理：LuCI 是 SPA，路由切换只替换
+		 * view 容器，并不清空 poll 队列。update 是 render() 内的闭包，
+		 * 页面离开后外部既拿不到引用也无法调用 poll.remove，于是这一路
+		 * 轮询会永久保留、持续请求 rpcd —— 访问 N 次本页就是 N 路并发。
+		 *
+		 * 【本次修复】本页此前缺少这道自注销（realtime / settings 两个页面
+		 * 在 1.5.x 的重构里已经补上，overview / charts / regions 三页漏了），
+		 * 是同一个缺陷的残留。判据是承载 DOM 是否已脱离文档：
+		 * root.isConnected 为 false 即说明页面已被路由换掉，此时自注销。
+		 *
+		 * 首次调用要豁免：poll.add 之后若框架尚未把 root 挂进文档，
+		 * isConnected 同样是 false，若不豁免会当场自注销、再无数据。 */
+		var firstRun = true;
+
 		function update() {
+			if (!firstRun && !root.isConnected) {
+				poll.remove(update);
+				return Promise.resolve();
+			}
+			firstRun = false;
 			return common.api.getStatus(true).then(apply).catch(function(e) {
 				common.clear(cards);
 				var err = common.el('div', 'nm-empty', String(e.message || e));

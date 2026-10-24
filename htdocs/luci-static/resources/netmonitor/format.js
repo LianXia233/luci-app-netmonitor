@@ -155,6 +155,32 @@ function dotClass(g) {
 	return 'nm-dot nm-dot-' + (GRADE_CLASS[g] || 'idle');
 }
 
+/* 按阈值把延迟换算成质量等级。
+ *
+ * 【统一口径】此前 overview / realtime / history / charts 四个页面各写了一份
+ * 同名函数，且判定用的是 `ms <= 阈值`；后端 luci.netmonitor 的 gradeOf()
+ * 用的是 `lat >= 阈值`。两者相差一个等号：延迟恰好等于阈值时，卡片徽章
+ * 显示「优秀」而后端给的是「良好」，同一时刻两处等级不一致。
+ *
+ * 这里以后端为准（也符合设置页自己的阈值描述：「延迟低于该值判定为优秀」
+ * 与「延迟达到或超过该值判定为严重」——都是严格小于 / 大于等于）。
+ *
+ * th 为阈值对象（来自 get_config 的 latency_* 字段）；缺失时退回默认值，
+ * 与后端的兜底取值保持一致。 */
+function gradeForLatency(ms, th) {
+	if (ms == null || isNaN(ms)) return 'unknown';
+	th = th || {};
+	var ex = parseFloat(th.latency_excellent) || 50;
+	var gd = parseFloat(th.latency_good) || 100;
+	var fr = parseFloat(th.latency_fair) || 200;
+	var pr = parseFloat(th.latency_poor) || 500;
+	if (ms < ex) return 'excellent';
+	if (ms < gd) return 'good';
+	if (ms < fr) return 'fair';
+	if (ms < pr) return 'poor';
+	return 'severe';
+}
+
 function regionText(r) {
 	if (r === 'cn') return _('China');
 	if (r === 'overseas') return _('Overseas');
@@ -207,6 +233,9 @@ return Class.extend({
 	gradeClass: gradeClass,
 	gradeText: gradeText,
 	dotClass: dotClass,
+	/* 延迟 -> 等级的统一实现，与后端 luci.netmonitor 的 gradeOf() 同口径。
+	 * 各页面不要再各写一份，否则阈值边界上会再次出现前后端不一致。 */
+	gradeForLatency: gradeForLatency,
 	regionText: regionText,
 	regionTagClass: regionTagClass,
 	errorText: errorText,

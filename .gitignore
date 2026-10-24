@@ -1,6 +1,10 @@
 # 单元测试运行时产生的工作区（tests/test_netmon_daemon.sh 会自建）
 tests/.tmp/
 
+# Python 字节码缓存：把 po/gen_po.py 当模块 import 调试时会产生
+__pycache__/
+*.pyc
+
 # 编译与编辑器产物
 *.o
 *.a

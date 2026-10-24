@@ -212,17 +212,12 @@ return view.extend({
 			return w;
 		}
 
+		/* 延迟 -> 等级：统一走 common.gradeForLatency()，与后端
+		 * luci.netmonitor 的 gradeOf() 同口径。本页此前自带的
+		 * gradeFromCfg() 用的是 `ms <= 阈值`，与后端的 `lat >= 阈值`
+		 * 在阈值边界上差一级。 */
 		function gradeFromCfg(ms) {
-			if (ms == null || isNaN(ms)) return 'unknown';
-			var ex = parseFloat(cfg.latency_excellent) || 50;
-			var gd = parseFloat(cfg.latency_good) || 100;
-			var fr = parseFloat(cfg.latency_fair) || 200;
-			var pr = parseFloat(cfg.latency_poor) || 500;
-			if (ms <= ex) return 'excellent';
-			if (ms <= gd) return 'good';
-			if (ms <= fr) return 'fair';
-			if (ms <= pr) return 'poor';
-			return 'severe';
+			return common.gradeForLatency(ms, cfg);
 		}
 
 		/* 区域标记 */

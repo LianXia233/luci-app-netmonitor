@@ -120,6 +120,9 @@ return Class.extend({
 	gradeClass: nfmt.gradeClass,
 	gradeText: nfmt.gradeText,
 	dotClass: nfmt.dotClass,
+	/* 延迟 -> 等级，与后端同口径的统一实现（详见 format.js）。
+	 * 各页面此前各写一份同名函数，阈值边界上差一个等号。 */
+	gradeForLatency: nfmt.gradeForLatency,
 	regionText: nfmt.regionText,
 	regionTagClass: nfmt.regionTagClass,
 	errorText: nfmt.errorText,

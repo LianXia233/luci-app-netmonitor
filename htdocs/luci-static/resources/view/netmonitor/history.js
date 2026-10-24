@@ -32,18 +32,11 @@ return view.extend({
 		var cfg = (res && res[1]) || {};
 		var targets = ((res && res[2]) || {}).targets || [];
 
-		/* 与后端一致的等级判定，阈值取自 UCI（getConfig） */
+		/* 等级判定：统一走 common.gradeForLatency()，与后端
+		 * luci.netmonitor 的 gradeOf() 同口径，阈值取自 UCI（getConfig）。
+		 * 本页此前自带一份 `ms <= 阈值` 的实现，与后端差一个等号。 */
 		function gradeOf(ms) {
-			if (ms == null || isNaN(ms)) return 'unknown';
-			var ex = parseFloat(cfg.latency_excellent) || 50;
-			var gd = parseFloat(cfg.latency_good) || 100;
-			var fr = parseFloat(cfg.latency_fair) || 200;
-			var pr = parseFloat(cfg.latency_poor) || 500;
-			if (ms <= ex) return 'excellent';
-			if (ms <= gd) return 'good';
-			if (ms <= fr) return 'fair';
-			if (ms <= pr) return 'poor';
-			return 'severe';
+			return common.gradeForLatency(ms, cfg);
 		}
 
 		var root = common.el('div', 'nm-root');
@@ -170,7 +163,20 @@ return view.extend({
 		chartCard.appendChild(legend);
 		page.appendChild(chartCard);
 
+		/* 请求序号。
+		 *
+		 * 【本次修复】三个筛选下拉都直接绑定 query()，连续切换（或连点查询）
+		 * 会并发发出多个请求，而响应到达顺序不保证与发出顺序一致：先发的慢
+		 * 请求可能最后才返回，把界面覆盖回旧筛选条件的结果——表现为
+		 * 「选了 24h，曲线却停在 15m 的数据上」，且不会再自动纠正。
+		 *
+		 * 加序号后，只有最新一次请求的响应会落到界面上；按钮也只在最新请求
+		 * 结束后才解禁，否则先返回的旧请求会提前点亮按钮，让用户在请求仍在
+		 * 途时再次点击。 */
+		var querySeq = 0;
+
 		function query() {
+			var seq = ++querySeq;
 			var range = selRange.value;
 			var region = selRegion.value;
 			var target = selTarget.value;
@@ -180,13 +186,14 @@ return view.extend({
 				common.api.getStatistics({ range: range, region: region, target: target }),
 				common.api.getHistory({ range: range, region: region, target: target, max_points: 600 })
 			]).then(function(r) {
-				var st = r[0];
-				var hi = r[1];
-				renderStats(st);
-				renderChart(hi);
+				if (seq !== querySeq) return;
+				renderStats(r[0]);
+				renderChart(r[1]);
 			}).catch(function(e) {
+				if (seq !== querySeq) return;
 				common.notify(String(e.message || e), 'error');
 			}).then(function() {
+				if (seq !== querySeq) return;
 				btnQuery.removeAttribute('disabled');
 			});
 		}

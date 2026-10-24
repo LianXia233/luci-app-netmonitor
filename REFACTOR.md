@@ -213,11 +213,21 @@ LUCI_MINIFY_CSS:=1   # 原为 0
 ```bash
 # 注：早期的 probe/verify.js 与 probe/xss.js 已随重构删除。
 # 现在由下列入口承担回归验证：
-node tests/test_icons.js          # 图标渲染断言（437 条）
-sh tests/test_netmon_daemon.sh   # 守护进程算法断言（101 条）
-python3 po/gen_po.py             # 翻译漂移审计
+node tests/test_icons.js            # 图标渲染断言（437 条）
+sh tests/test_netmon_daemon.sh     # 守护进程算法断言（136 条）
+node tests/test_frontend_guards.js # 前端防护与生命周期断言（79 条）
+sh tests/check_ucode_syntax.sh     # ucode 插件语法近似校验
+python3 po/gen_po.py               # 翻译漂移审计
 # 交互与视觉：起本地服务后打开 tests/preview/index.html（见该文件头注释）
 ```
+
+### 4.1 断言数与工作区残留
+
+`test_netmon_daemon.sh` 的工作区 `tests/.tmp` 在多次运行之间会残留
+`state/<id>`。若不复位，`run_round` 的「未到下次检测时间」会让本轮直接跳过，
+ping 不被调用，断言只能拿到空参数 —— 表现为「第一次跑通过、之后再跑全红」。
+测试脚本已在第 2 段开头显式复位 state（用清空而不是删除：脚本把 `rm` 替换
+成了 no-op，见该文件头说明）。新增测试时若引入新的目标 id，请沿用同样处理。
 
 ---
 

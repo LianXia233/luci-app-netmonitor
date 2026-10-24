@@ -128,18 +128,12 @@ return view.extend({
 
 		page.appendChild(card);
 
-		/* 阈值判定函数（与后端一致，阈值取自 UCI） */
+		/* 阈值判定函数（与后端一致，阈值取自 UCI）。
+		 * 统一走 common.gradeForLatency()：本页此前自带一份
+		 * `ms <= 阈值` 的实现，与后端 luci.netmonitor 的 `lat >= 阈值`
+		 * 在阈值边界上差一级。 */
 		function gradeOf(ms) {
-			if (ms == null || isNaN(ms)) return 'unknown';
-			var ex = parseFloat(cfg.latency_excellent) || 50;
-			var gd = parseFloat(cfg.latency_good) || 100;
-			var fr = parseFloat(cfg.latency_fair) || 200;
-			var pr = parseFloat(cfg.latency_poor) || 500;
-			if (ms <= ex) return 'excellent';
-			if (ms <= gd) return 'good';
-			if (ms <= fr) return 'fair';
-			if (ms <= pr) return 'poor';
-			return 'severe';
+			return common.gradeForLatency(ms, cfg);
 		}
 
 		/* 动态 SVG 实时采样声波柱生成器（动效类收口在 style.css） */
@@ -338,7 +332,33 @@ return view.extend({
 			});
 		}
 
-		poll.add(reload, refresh);
+		/* 轮询自注销。
+		 *
+		 * 与 overview.js / realtime.js 同理：LuCI 是 SPA，路由切换只替换
+		 * view 容器、不清空 poll 队列；reload 是 render() 内的闭包，
+		 * 页面离开后外部拿不到引用，只能自己判断承载 DOM 是否还在文档里。
+		 * 缺了这一步，访问 N 次本页就留下 N 路并发轮询持续打 rpcd。
+		 *
+		 * 【本次修复】本页此前直接 poll.add(reload, refresh) 且无任何注销，
+		 * 是 1.5.x 那次「SPA 路由切换导致弹窗与轮询泄漏」修复的遗漏点
+		 * （realtime / settings 已补，overview / charts / regions 三页漏了）。
+		 *
+		 * 首次调用必须豁免：render() 末尾会同步调一次 reload() 拉取首屏数据，
+		 * 而那时 LuCI 还没把 root 挂进文档，isConnected 同样为 false。
+		 * 不豁免就会当场自注销，页面永远空白。 */
+		var firstRun = true;
+
+		function pollTick() {
+			if (firstRun)
+				firstRun = false;
+			else if (!root.isConnected) {
+				poll.remove(pollTick);
+				return Promise.resolve();
+			}
+			return reload();
+		}
+
+		poll.add(pollTick, refresh);
 		reload();
 
 		return root;

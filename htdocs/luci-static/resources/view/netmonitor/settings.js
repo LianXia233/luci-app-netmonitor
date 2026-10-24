@@ -67,8 +67,12 @@ function fieldGroups() {
 				{
 					key: 'address_family', kind: 'enum',
 					title: _('地址族'),
-					desc: _('探测使用的协议族，单个目标可单独覆盖。'),
-					values: [['auto', _('自动')], ['ipv4', _('仅 IPv4')], ['ipv6', _('仅 IPv6')]]
+					/* 把 both 的语义写清楚：它与 auto 的差异只体现在
+					 * 「IPv4 探测失败时是否明确再试一次 IPv6」，
+					 * 不看这行的话两者很容易被当成同一个选项。 */
+					desc: _('探测使用的协议族，单个目标可单独覆盖。自动：交给系统的地址解析顺序；双栈：先按 IPv4 探测，失败再按 IPv6 探测，任一栈可达即视为可达。'),
+					values: [['auto', _('自动')], ['ipv4', _('仅 IPv4')], ['ipv6', _('仅 IPv6')],
+					         ['both', _('双栈（IPv4 + IPv6）')]]
 				},
 				{
 					key: 'interface', kind: 'text',
@@ -409,7 +413,11 @@ return view.extend({
 			var enabled = String(v.enabled == null ? '1' : v.enabled);
 			var proto = String(v.default_proto == null ? 'icmp' : v.default_proto);
 			var port = String(v.default_tcp_port == null ? '80' : v.default_tcp_port);
-			var v6 = (fam === 'ipv6');
+			/* both（双栈）两个栈都会走：先 IPv4、失败再 IPv6，故 v4 与 v6
+			 * 同时成立。此前 v6 只判 ipv6，选中双栈时速览条上的图标会被
+			 * 画成「仅 IPv4」，与配置不符。 */
+			var v6 = (fam === 'ipv6' || fam === 'both');
+			var v4 = (fam !== 'ipv6');
 
 			strip.appendChild(makeStripCard(
 				_('默认探测方式'),
@@ -446,7 +454,7 @@ return view.extend({
 				_('地址族'),
 				fam,
 				_('总开关') + ': ' + ((enabled === '1') ? _('已启用') : _('已停用')),
-				icons.dualStack(fam, fam !== 'ipv6', v6, 44)
+				icons.dualStack(fam, v4, v6, 44)
 			));
 
 			strip.appendChild(makeStripCard(

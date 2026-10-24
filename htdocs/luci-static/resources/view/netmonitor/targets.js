@@ -507,6 +507,18 @@ return view.extend({
 			if (editorOpen) return;
 			editorOpen = true;
 
+			/* 提交守卫。
+			 *
+			 * 【本次修复】submit() 恒返回 false（异步结果由它自己收尾，
+			 * 校验未通过时靠这个 false 保持弹窗打开），于是 ui.button 拿不到
+			 * Promise、不会给确认按钮加 is-busy，按钮在整段提交期间始终可点。
+			 * 连点「保存并应用」会连发两次 saveConfig / addSection：
+			 * 新增目标时表现为一次建出两个一模一样的目标段；编辑时则是
+			 * 后发请求覆盖先发请求。
+			 * editorOpen 只挡住了「叠开两个弹窗」，挡不住同一个弹窗内的连点，
+			 * 这里补上第二道。 */
+			var submitting = false;
+
 			var body = common.el('div', 'nm-dialog-body');
 			var fields = {};
 
@@ -575,6 +587,7 @@ return view.extend({
 			body.appendChild(errBox);
 
 			function submit() {
+				if (submitting) return false;
 				var proto = fields.proto.value;
 				var port = intOf(fields.tcp_port, 0, 65535);
 				if (proto !== 'tcp') port = 0;
@@ -616,6 +629,7 @@ return view.extend({
 					p = common.addSection('netmonitor', 'target', data);
 				}
 
+				submitting = true;
 				p.then(function (changed) {
 					if (changed === 0) {
 						dlg.close();
@@ -626,6 +640,10 @@ return view.extend({
 					return common.applyChanges();
 				}).catch(function (e) {
 					errBox.textContent = String((e && e.message) || e);
+				}).then(function () {
+					/* 无论成败都解禁：失败时弹窗保持打开让用户改了重试，
+					 * 成功时弹窗已关闭、本标志随闭包一起释放。 */
+					submitting = false;
 				});
 				return false; /* 交由上面的 Promise 完成后自行关闭 */
 			}

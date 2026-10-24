@@ -292,7 +292,33 @@ return view.extend({
 			});
 		}
 
-		poll.add(function() { return reload(false); }, refresh);
+		/* 轮询自注销。
+		 *
+		 * 与 overview.js / realtime.js 同理：LuCI 的 SPA 路由切换只替换
+		 * view 容器、不清空 poll 队列，页面离开后这一路轮询会继续打 rpcd，
+		 * 访问 N 次就是 N 路并发。
+		 *
+		 * 【本次修复】本页此前注册的是一个**匿名**函数
+		 * （poll.add(function(){ return reload(false); }, refresh)），
+		 * 不只是「忘了注销」——匿名函数每次 render 都是新的函数对象，
+		 * 外部连 poll.remove() 的入参都拿不到，属于结构性地无法注销。
+		 * 改为具名函数后按 isConnected 自判注销。
+		 *
+		 * 首次调用豁免：render() 末尾同步调 reload(true) 拉首屏，
+		 * 那时 root 尚未入文档。 */
+		var firstRun = true;
+
+		function pollTick() {
+			if (firstRun)
+				firstRun = false;
+			else if (!root.isConnected) {
+				poll.remove(pollTick);
+				return Promise.resolve();
+			}
+			return reload(false);
+		}
+
+		poll.add(pollTick, refresh);
 		reload(true);
 
 		return root;
