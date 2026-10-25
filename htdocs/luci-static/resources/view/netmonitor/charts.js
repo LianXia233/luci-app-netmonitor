@@ -46,19 +46,12 @@ return view.extend({
 		var page = common.el('div', 'nm-page');
 		root.appendChild(page);
 
-		/* 原生下拉工厂：替代 t-select（TDesign 下拉在受控模式下无法打开，
-		 * 见 settings.js 同类改造说明）。样式沿用 .nm-select。 */
+		/* 原生下拉工厂：统一取 ui.js 的 selectInput（.nm-ctl 基线）。
+		 * 替代 t-select（TDesign 下拉在受控模式下无法打开，
+		 * 见 settings.js 同类改造说明）。本页此前的 makeSelect 自建实现已删除，
+	 * 这里只保留一个转调别名，避免改动全部调用点。 */
 		function makeSelect(options, value) {
-			var sel = document.createElement('select');
-			sel.className = 'nm-select';
-			options.forEach(function(o) {
-				var opt = document.createElement('option');
-				opt.value = o.value;
-				opt.textContent = o.label;
-				sel.appendChild(opt);
-			});
-			sel.value = value;
-			return sel;
+			return common.ui.selectInput(options, value);
 		}
 
 		/* 工具栏（TDesign 视觉卡） */
@@ -74,7 +67,8 @@ return view.extend({
 			range = selRange.value;
 			reload();
 		});
-		fRange.appendChild(common.el('label', '', _('Time range')));
+		/* 标签与下拉显式关联：点击标签即聚焦控件 */
+		fRange.appendChild(common.ui.bindLabel(_('Time range'), selRange));
 		fRange.appendChild(selRange);
 		row.appendChild(fRange);
 
@@ -97,7 +91,7 @@ return view.extend({
 			}
 			drawChart();
 		});
-		fPreset.appendChild(common.el('label', '', _('Quick filter')));
+		fPreset.appendChild(common.ui.bindLabel(_('Quick filter'), selPreset));
 		fPreset.appendChild(selPreset);
 		row.appendChild(fPreset);
 
@@ -244,10 +238,7 @@ return view.extend({
 			}
 
 			if (!series.length) {
-				var emptyEl = common.el('div', 'nm-empty', _('No target selected'));
-				emptyEl.style.padding = '44px';
-				emptyEl.style.textAlign = 'center';
-				chartBox.appendChild(emptyEl);
+				chartBox.appendChild(common.emptyState(_('No target selected'), { size: 'lg' }));
 				releaseHold();
 				return;
 			}
@@ -325,9 +316,7 @@ return view.extend({
 				var bh = chartBox.offsetHeight || 0;
 				if (bh > 0) chartBox.style.minHeight = bh + 'px';
 				common.clear(chartBox);
-				var errEl = common.el('div', 'nm-empty', String(e.message || e));
-				errEl.style.padding = '30px';
-				chartBox.appendChild(errEl);
+				chartBox.appendChild(common.emptyState(String(e.message || e), { kind: 'error', size: 'lg' }));
 				chartBox.style.minHeight = '';
 			});
 		}

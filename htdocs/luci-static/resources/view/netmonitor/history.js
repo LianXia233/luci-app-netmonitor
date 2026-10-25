@@ -43,19 +43,12 @@ return view.extend({
 		var page = common.el('div', 'nm-page');
 		root.appendChild(page);
 
-		/* 原生下拉工厂：替代 t-select（TDesign 下拉在受控模式下无法打开，
-		 * 见 settings.js 同类改造说明）。样式沿用 .nm-select。 */
+		/* 原生下拉工厂：统一取 ui.js 的 selectInput（.nm-ctl 基线）。
+		 * 替代 t-select（TDesign 下拉在受控模式下无法打开，
+		 * 见 settings.js 同类改造说明）。本页此前的 makeSelect 自建实现已删除，
+	 * 这里只保留一个转调别名，避免改动全部调用点。 */
 		function makeSelect(options, value) {
-			var sel = document.createElement('select');
-			sel.className = 'nm-select';
-			options.forEach(function(o) {
-				var opt = document.createElement('option');
-				opt.value = o.value;
-				opt.textContent = o.label;
-				sel.appendChild(opt);
-			});
-			sel.value = value;
-			return sel;
+			return common.ui.selectInput(options, value);
 		}
 
 		/* 工具栏（TDesign 视觉卡） */
@@ -67,7 +60,8 @@ return view.extend({
 		var selRange = makeSelect(RANGES.map(function(r) {
 			return { label: _(r[1]), value: r[0] };
 		}), '6h');
-		fRange.appendChild(common.el('label', '', _('Time range')));
+		/* 标签与下拉显式关联：点击标签即聚焦控件 */
+		fRange.appendChild(common.ui.bindLabel(_('Time range'), selRange));
 		fRange.appendChild(selRange);
 		row.appendChild(fRange);
 
@@ -79,7 +73,7 @@ return view.extend({
 			{ label: _('Overseas'), value: 'overseas' },
 			{ label: _('Other'), value: 'other' }
 		], 'all');
-		fRegion.appendChild(common.el('label', '', _('Region')));
+		fRegion.appendChild(common.ui.bindLabel(_('Region'), selRegion));
 		fRegion.appendChild(selRegion);
 		row.appendChild(fRegion);
 
@@ -90,7 +84,7 @@ return view.extend({
 			targetOptions.push({ label: t.name || t.id, value: t.id });
 		});
 		var selTarget = makeSelect(targetOptions, 'all');
-		fTarget.appendChild(common.el('label', '', _('Target')));
+		fTarget.appendChild(common.ui.bindLabel(_('Target'), selTarget));
 		fTarget.appendChild(selTarget);
 		row.appendChild(fTarget);
 
@@ -221,12 +215,11 @@ return view.extend({
 			return card;
 		}
 
-		/* 区域胶囊标签 */
-		function regionTag(region) {
-			return common.ui.chip({
-				text: common.regionText(region),
-				kind: (region === 'cn') ? 'info' : ((region === 'overseas') ? 'warn' : 'idle')
-			});
+		/* 区域胶囊标签：统一走 common.regionTag()（widgets.regionTag 的唯一实现），
+		 * 本页此前自带一份 common.ui.chip({ kind: info|warn|idle }) 的拼装，
+		 * 与目标卡片的 .nm-tag-* 是两套配色、两种形态。 */
+		function regionTag(region, label) {
+			return common.regionTag(region, label);
 		}
 
 		function renderStrip(rows) {
@@ -251,8 +244,10 @@ return view.extend({
 					return {
 						name: r.name || r.id,
 						latency: r.avg,
+						/* 阈值配色按 UCI 的 loss_warn / loss_critical 判定，
+						 * 不再硬编码 99 / 95 —— 详见 format.js 的 rateGradeName()。 */
 						grade: (r.samples > 0)
-							? (r.success_rate >= 99 ? 'good' : (r.success_rate >= 95 ? 'fair' : 'down'))
+							? common.rateGradeName(r.success_rate, cfg)
 							: 'unknown'
 					};
 				}), 46)
@@ -271,16 +266,18 @@ return view.extend({
 				_('Packet loss'),
 				common.fmt.percent(loss),
 				_('Weighted by samples'),
-				icons.lossRing(loss, 46),
-				(loss > 5) ? 'nm-c-bad' : (loss > 0 ? 'nm-c-warn' : 'nm-c-ok')
+				icons.lossRing(loss, 46, cfg),
+				/* 阈值配色按 UCI 的 loss_warn / loss_critical 判定，
+				 * 不再硬编码 5 —— 详见 format.js 的 lossGrade()。 */
+				'nm-c-' + common.lossGrade(loss, cfg)
 			));
 
 			strip.appendChild(makeStripCard(
 				_('Success rate'),
 				common.fmt.percent(rate, 1),
 				_('Samples') + ': ' + den,
-				icons.successRing(rate, 46),
-				rate == null ? '' : (rate >= 99 ? 'nm-c-ok' : (rate >= 95 ? 'nm-c-warn' : 'nm-c-bad'))
+				icons.successRing(rate, 46, cfg),
+				'nm-c-' + common.rateGrade(rate, cfg)
 			));
 		}
 
@@ -290,11 +287,8 @@ return view.extend({
 			renderStrip(rows);
 			if (!rows.length) {
 				var tr0 = common.el('tr', '');
-				var td0 = common.el('td', 'nm-empty', _('No data in this range'));
-				td0.colSpan = 10;
-				td0.style.padding = '36px';
-				td0.style.textAlign = 'center';
-				tr0.appendChild(td0);
+				tr0.appendChild(common.emptyState(_('No data in this range'),
+					{ tag: 'td', size: 'sm', colspan: 10 }));
 				statBody.appendChild(tr0);
 				return;
 			}
@@ -332,10 +326,7 @@ return view.extend({
 				});
 			}
 			if (!series.length) {
-				var emptyEl = common.el('div', 'nm-empty', _('No data in this range'));
-				emptyEl.style.padding = '36px';
-				emptyEl.style.textAlign = 'center';
-				chartBox.appendChild(emptyEl);
+				chartBox.appendChild(common.emptyState(_('No data in this range'), { size: 'lg' }));
 				return;
 			}
 			chart.mount(chartBox, series, { height: 260, area: (series.length === 1) });

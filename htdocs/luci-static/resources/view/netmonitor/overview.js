@@ -267,7 +267,7 @@ return view.extend({
 			var rate = (samples > 0) ? (acc / samples) : null;
 
 			live.appendChild(makeGlassCard(_('Success rate'), common.fmt.percent(rate, 1),
-				_('Samples') + ': ' + samples, icons.successRing(rate, 44)));
+				_('Samples') + ': ' + samples, icons.successRing(rate, 44, cfgv)));
 
 			live.appendChild(makeGlassCard(_('Abnormal'), String(o.offline || 0) + ' / ' + String(o.total || 0),
 				_('Online') + ': ' + (o.online || 0), icons.bell(o.offline, 44)));
@@ -302,10 +302,7 @@ return view.extend({
 			common.clear(cards);
 			var list = d.targets || [];
 			if (!list.length) {
-				var e = common.el('div', 'nm-empty', _('No targets configured'));
-				e.style.padding = '36px';
-				e.style.textAlign = 'center';
-				cards.appendChild(e);
+				cards.appendChild(common.emptyState(_('No targets configured')));
 				return;
 			}
 			for (var i = 0; i < list.length; i++) {
@@ -314,16 +311,30 @@ return view.extend({
 			}
 		}
 
-		function renderFoot(d) {
-			common.clear(foot);
-			foot.classList.add('nm-foot-bar');
+	/* 状态行：服务状态 + 最后更新时间。
+	 *
+	 * 【本次统一】有请求在飞（pending > 0）时追加旋转指示器与「刷新中」
+	 * 文案——此前页面在两次轮询之间与卡住不动长得一模一样，用户无法
+	 * 判断「数据是旧的」还是「请求根本发不出去」。指示器随数据到达
+	 * 自动消失，不需要额外的显隐控制。 */
+	function renderFoot(d) {
+		common.clear(foot);
+		foot.classList.add('nm-foot-bar');
 
-			/* 状态行：服务状态 + 动态 SVG 均衡柱图，占满剩余空间 */
-			var row = common.el('div', 'nm-foot-status');
-			row.appendChild(common.inlineIcon(icons.service(d.running, 30)));
-			row.appendChild(common.el('div', '',
-				(d.running ? _('Service running') : _('Service stopped')) +
-				' · ' + _('Last update') + ': ' + common.fmt.ago(d.tick)));
+		var row = common.el('div', 'nm-foot-status');
+		row.appendChild(common.inlineIcon(icons.service(d.running, 30)));
+
+		var statusText = (d.running ? _('Service running') : _('Service stopped')) +
+			' · ' + _('Last update') + ': ' + common.fmt.ago(d.tick);
+		var statusCell = common.el('div', '', statusText);
+		if (pending > 0) {
+			statusCell.classList.add('nm-foot-refreshing');
+			var spin = common.el('span', 'nm-spin');
+			spin.setAttribute('aria-hidden', 'true');
+			statusCell.appendChild(spin);
+			statusCell.appendChild(common.el('span', '', _('Refreshing')));
+		}
+		row.appendChild(statusCell);
 
 			var bars = [];
 			var tl = d.targets || [];
@@ -366,14 +377,15 @@ return view.extend({
 			foot.appendChild(actRow);
 		}
 
-		function apply(d) {
-			renderHero(d);
-			renderBanners(d);
-			renderKpi(d);
-			renderLive(d);
-			renderCards(d);
-			renderFoot(d);
-		}
+	function apply(d) {
+		lastD = d;
+		renderHero(d);
+		renderBanners(d);
+		renderKpi(d);
+		renderLive(d);
+		renderCards(d);
+		renderFoot(d);
+	}
 
 		/* 首次加载标记。
 		 *
@@ -389,24 +401,54 @@ return view.extend({
 		 *
 		 * 首次调用要豁免：poll.add 之后若框架尚未把 root 挂进文档，
 		 * isConnected 同样是 false，若不豁免会当场自注销、再无数据。 */
-		var firstRun = true;
+	var firstRun = true;
 
-		function update() {
-			if (!firstRun && !root.isConnected) {
-				poll.remove(update);
-				return Promise.resolve();
-			}
-			firstRun = false;
-			return common.api.getStatus(true).then(apply).catch(function(e) {
-				common.clear(cards);
-				var err = common.el('div', 'nm-empty', String(e.message || e));
-				err.style.padding = '24px';
-				cards.appendChild(err);
-			});
+	/* 在飞请求计数与最近一次成功数据。
+	 *
+	 * pending 供页脚显示「刷新中」指示器；lastD 供取数失败时按旧数据
+	 * 收掉指示器（否则一次失败的轮询会让「刷新中」永久停在上屏）。 */
+	var pending = 0;
+	var lastD = null;
+
+	/* 卡片区加载占位：首屏数据尚未到达（或上一次取数失败且无旧数据
+	 * 可回退）时，卡片区不呈现为空白，而是统一给出旋转指示器 + 文案，
+	 * 与 widgets.emptyState 的「无数据」灰色空态在语义上区分开——
+	 * 一个是「正在来」，一个是「没有」。 */
+	function showCardsLoading() {
+		common.clear(cards);
+		var box = common.el('div', 'nm-loading-inline');
+		box.setAttribute('role', 'status');
+		var spin = common.el('span', 'nm-spin');
+		spin.setAttribute('aria-hidden', 'true');
+		box.appendChild(spin);
+		box.appendChild(common.el('span', '', _('Loading…')));
+		cards.appendChild(box);
+	}
+
+	function update() {
+		if (!firstRun && !root.isConnected) {
+			poll.remove(update);
+			return Promise.resolve();
 		}
+		firstRun = false;
+		pending++;
+		return common.api.getStatus(true).then(function(d) {
+			pending--;
+			apply(d);
+		}).catch(function(e) {
+			pending--;
+			/* 取数失败：卡片区切错误空态；若此前有成功数据，按旧数据
+			 * 重绘一次页脚以收掉刷新指示器（hero / kpi / live 等区保留
+			 * 上一次的画面，不整页清空造成闪烁）。 */
+			common.clear(cards);
+			cards.appendChild(common.emptyState(String(e.message || e), { kind: 'error' }));
+			if (lastD) renderFoot(lastD);
+		});
+	}
 
-		if (first) apply(first);
-		poll.add(update, refresh);
+	if (first) apply(first);
+	else showCardsLoading();
+	poll.add(update, refresh);
 
 		return root;
 	}

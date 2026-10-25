@@ -720,17 +720,34 @@ fi
 assert_not_contains "未使用进程组整体 kill" 'kill -TERM "-' "$_src_code"
 
 # 行为验证：派生的后台子进程必须被真正终止
+#
+# shells 差异（实测）：nm_kill_children 用 `kids=$(jobs -p)` 枚举直接子进程，
+# 命令替换会 fork 子 shell——bash（Git Bash 开发机）与 busybox ash（OpenWrt
+# 设备）会把任务表带进子 shell，jobs -p 正常输出；而 dash 的非交互实现里
+# 子 shell 拿不到任务表，输出为空，nm_kill_children 便一个进程都杀不到。
+# 这不是被测代码的缺陷（dash 既非开发环境也非目标环境），但会让行为断言
+# 在 dash 下假失败。先以同一形式（命令替换）探测当前 shell 能否枚举，
+# 不能则跳过行为验证——源码级断言不受影响，支持 shell 上仍全量执行。
 sleep 30 &
 _sp=$!
-nm_kill_children
-sleep 1
-if [ -d "/proc/$_sp" ]; then
-	FAIL=$((FAIL + 1))
-	printf '  FAIL  后台子进程未被回收 (pid=%s 仍存活)\n' "$_sp"
+_jobs_probe=$(jobs -p 2>/dev/null)
+if [ -z "$_jobs_probe" ]; then
+	SKIP=$((SKIP + 1))
+	printf '  skip  当前 shell 的命令替换无法枚举后台任务（dash 行为），行为验证略过\n'
 	kill -TERM "$_sp" 2>/dev/null
+	wait "$_sp" 2>/dev/null
 else
-	PASS=$((PASS + 1))
-	printf '  ok    后台子进程已被回收\n'
+	nm_kill_children
+	sleep 1
+	if [ -d "/proc/$_sp" ]; then
+		FAIL=$((FAIL + 1))
+		printf '  FAIL  后台子进程未被回收 (pid=%s 仍存活)\n' "$_sp"
+		kill -TERM "$_sp" 2>/dev/null
+		wait "$_sp" 2>/dev/null
+	else
+		PASS=$((PASS + 1))
+		printf '  ok    后台子进程已被回收\n'
+	fi
 fi
 
 echo

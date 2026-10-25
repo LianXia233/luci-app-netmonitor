@@ -3,7 +3,8 @@
  *
  * 职责边界（本模块是**纯函数层**）：
  *   数值 → 展示字符串（toNum / num / latency / percent / clockOf / dateTimeOf / ago）
- *   状态码 → CSS 类名 / 展示文案（gradeClass / gradeText / dotClass / region* / errorText）
+ *   状态码 → CSS 类名 / 展示文案（gradeClass / gradeText / dotClass / errorText）
+ *   区域文案（regionText；区域胶囊组件本身在 widgets.js，此处只出文案）
  *   后端英文报错 → 可翻译文案（localizeError）
  *
  * 刻意不 require rpc / ui / uci，也不碰 DOM —— 因此可以被任意模块安全依赖，
@@ -181,16 +182,68 @@ function gradeForLatency(ms, th) {
 	return 'severe';
 }
 
+/* 丢包率 -> 语义类名（ok / warn / bad / idle）。
+ *
+ * 【本次统一】此前 widgets.js、realtime.js、regions.js、history.js 各自
+ * 硬编码 `loss > 5` 判红。而设置页里的 loss_warn / loss_critical 是用户
+ * 可以改的——改完之后界面配色纹丝不动，配置与视觉对不上。
+ *
+ * 三档口径与 UCI 配置项一一对应（默认 5 / 20）：
+ *   loss >= loss_critical  -> bad
+ *   loss >= loss_warn      -> warn
+ *   其余                   -> ok
+ *
+ * 顺带用上了此前完全没被前端使用的 loss_critical。
+ *
+ * 行为变化（默认配置下）：丢包 1%~5% 原先显示黄色，现在显示绿色——
+ * 因为 5% 才是配置里声明的告警线，未达线就该是正常。这正是「配置驱动
+ * 视觉」想要的效果，而不是把阈值写死在代码里。 */
+function lossGrade(loss, th) {
+	var n = toNum(loss);
+	if (n == null) return 'idle';
+	th = th || {};
+	var warn = toNum(th.loss_warn);
+	var crit = toNum(th.loss_critical);
+	if (warn == null) warn = 5;
+	if (crit == null) crit = 20;
+	/* 两个数都来自用户输入，critical 被填成小于 warn 时配色会反着来，
+	 * 这里按「critical 才是更严重那档」兜底。 */
+	if (crit < warn) crit = warn;
+	if (n >= crit) return 'bad';
+	if (n >= warn) return 'warn';
+	return 'ok';
+}
+
+/* 可用率 -> 语义类名。
+ *
+ * 可用率与丢包率是同一件事的两面（rate = 100 - loss），因此口径直接由
+ * loss 阈值推导。此前四个页面各写一份 `>= 99 ? ok : (>= 95 ? warn : bad)`：
+ * 既重复四处，那两个数字又与 UCI 里的任何配置都无关，用户无从调整。 */
+function rateGrade(rate, th) {
+	var n = toNum(rate);
+	if (n == null) return 'idle';
+	return lossGrade(100 - n, th);
+}
+
+/* 可用率 -> 仪表盘图标用的等级名（good / fair / down / unknown）。
+ *
+ * icons.multiTarget() 等仪表盘认的是延迟等级词表（GRADE_COLOR 的键），
+ * 而丢包 / 可用率走的是 lossGrade 的语义档位。此前 history.js 自己
+ * `>= 99 ? good : (>= 95 ? fair : down)` 把两个词表缝在一起，阈值同样
+ * 与 UCI 无关；这里统一翻译一层，调用方不再需要知道两套词表的关系。 */
+function rateGradeName(rate, th) {
+	switch (rateGrade(rate, th)) {
+		case 'ok': return 'good';
+		case 'warn': return 'fair';
+		case 'bad': return 'down';
+		default: return 'unknown';
+	}
+}
+
 function regionText(r) {
 	if (r === 'cn') return _('China');
 	if (r === 'overseas') return _('Overseas');
 	return _('Other');
-}
-
-function regionTagClass(r) {
-	if (r === 'cn') return 'nm-tag nm-tag-cn';
-	if (r === 'overseas') return 'nm-tag nm-tag-overseas';
-	return 'nm-tag nm-tag-other';
 }
 
 function errorText(e) {
@@ -236,8 +289,14 @@ return Class.extend({
 	/* 延迟 -> 等级的统一实现，与后端 luci.netmonitor 的 gradeOf() 同口径。
 	 * 各页面不要再各写一份，否则阈值边界上会再次出现前后端不一致。 */
 	gradeForLatency: gradeForLatency,
+	/* 丢包率 / 可用率 -> 语义类名，按 UCI 的 loss_warn / loss_critical 判定。
+	 * 各页面不要再硬编码 5 / 99 / 95，否则设置页改了阈值界面不会跟着变。 */
+	lossGrade: lossGrade,
+	rateGrade: rateGrade,
+	/* 可用率 -> 仪表盘等级名（good / fair / down / unknown），
+	 * 供 icons.multiTarget() 这类认延迟词表的组件使用。 */
+	rateGradeName: rateGradeName,
 	regionText: regionText,
-	regionTagClass: regionTagClass,
 	errorText: errorText,
 	localizeError: localizeError
 });

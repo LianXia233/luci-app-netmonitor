@@ -15,6 +15,113 @@
 辅助小节另用 `验证`（该版的验证结论）/`文档`（纯文档同步）/`撤回`（推翻上一版的决定）。
 
 
+## [1.6.0] - 2026-10-25
+
+本版是前端的一次**体系性重构**：把散落在七个页面里的控件与弹窗实现收敛为一套
+设计系统。业务逻辑、UCI 字段、RPC/ubus/ACL、接口路径与数据结构**一律未动**，
+改动集中在前端 UI/交互/样式三层。所有度量引用同一组 CSS 自定义属性（Token），
+弹层共用同一个模态外壳，页面不再自己拼 dialog / select / switch / toast。
+
+### 新增
+
+- **`ui.js` 设计系统原语**（`htdocs/luci-static/resources/netmonitor/ui.js`，395 → 1320 行）
+  - 表单控件九个工厂：`field`（label[for] + 说明 + 错误行 + `setError` 一次配齐）、
+    `textInput` / `numberInput` / `textareaInput` / `selectInput`（`.nm-ctl` 基线：
+    40px 高、聚焦环、禁用态、错误态、移动端 44px）、`switchControl`（44×26 四态：
+    on / off / busy / disabled，`role="switch"` 保留原生键盘语义）、`checkControl`、
+    `radioGroup`、`segmented`；另有 `bindLabel`（把行标题变成显式关联的
+    `<label for>`）与 `setBusy`（`is-busy` + `aria-busy`）。
+  - 完整弹窗体系：`dialog` 重写（`onBeforeClose` dismiss 拦截、`maskClose`、
+    `onOk` 返回 Promise 时确认按钮自动 busy + 禁用）、`confirm`（`danger: true` 时
+    确认按钮危险色且遮罩点击默认不关）、`panel`（PC 抽屉 / 窄屏底部面板）、
+    `popover`（实测 rect 自动翻转方向、危险项语义红分组）、`toast`（四级语义 +
+    队列去重 + 同屏上限 4 + 手动关闭）、`progress`（确定 / 不确定两种进度，
+    终态颜色 + 文案 + 满条三重区分，**禁假进度**）。
+  - `overlayShell` 模态外壳：`dialog` / `panel` / `progress` 共有的模态语义
+    （close 幂等、Tab 圈养、焦点还原、滚动锁引用计数、rAF 驱动 `is-open`）
+    收敛到一处，形态差异由调用方注入。
+- **总览页加载态**（`view/netmonitor/overview.js`）
+  在飞请求计数 `pending` + 最近一次成功数据 `lastD`：请求在飞时页脚状态行追加
+  旋转指示器与「刷新中」；首屏无数据时卡片区显示加载占位（此前的表现是空白）；
+  取数失败时卡片区切错误空态，并按旧数据重绘页脚收掉指示器。
+- **CSS 设计 Token**（`style.css`）：控件高度 / 内边距 / 字号 / 圆角 / 焦点环 /
+  动效时长 / 层级（sticky 100、pop 2000、dlg 2100、toast 2200）全部变量化，
+  明暗两套主题、`prefers-reduced-motion` 全覆盖（含挂在 body 下的弹窗与通知）、
+  `backdrop-filter` 不支持时的遮罩回退。
+
+### 变更
+
+- **控件统一取自工厂**：设置页四份本地控件工厂（switchControl / intControl /
+  enumControl / textControl）、targets 编辑器三份（selectInput / textInput /
+  numberInput）与四个页面各一份的 `makeSelect` 全部删除，改为委托
+  `common.ui.*`（保留各自 `{kind, el}` / 转调别名形状，collect / valueOf /
+  applyConfig 零改动）。此前同一套原生控件在全库有**九份**拷贝。
+- **弹窗体系统一**：页面不再直拼 `nm-dlg*` 外壳类；targets 编辑器字段包裹改走
+  `common.ui.field`，校验错误写到对应字段下方（不再是弹窗顶部一根孤零零的错误条），
+  提交改「onOk 返回 Promise」，连点防护由框架层保证。
+- **通知收敛**：`widgets.notify()` 委托 `nmui.toast()`（warning → warn 归并）。
+  旧实现基于未定义的全局 `E` / LuCI `ui.addNotification`，实际永远走 catch 落
+  console，用户看不到任何提示；`ui.button` 内部两处 `notify(...)` 同样改为
+  本模块 `toast(..., 'error')`。
+- **响应式断点收敛**：弹层形态（PC 居中框 / 窄屏底部面板）由 JS 按
+  `matchMedia` 加 `is-sheet` / `is-drawer` 类驱动，全库弹层断点唯一 768px，
+  禁止「仅用 CSS 把 PC 弹窗缩小」的伪适配。移动端控件升 44px 触控高度。
+- **清理冗余 CSS**：旧控件类名 `.nm-select` / `.nm-input` / `.nm-num-input`
+  自 v1.4.2 起零发送方（JS 全部改发 `.nm-ctl`），其样式规则（含 32px 基线块、
+  三处宽度覆写、旧类名兼容块）全部删除；弹窗表单 / 设置页的控件宽度规则改指
+  `.nm-ctl` 一条。
+
+### 修复
+
+- **按钮出错时用户看不到任何提示**（`ui.js` 的 `button()`）
+  错误处理调用的是一个从未定义的全局 `notify`，请求失败时提示直接落进
+  console。改为本模块 `toast(msg, 'error')`，顺带给 busy 态补上 `aria-busy`。
+- **五个行内操作按钮没有可访问名称**（`ui.js` 的 `button()`）
+  targets 行内的 Edit / ↑ / ↓ / Copy / Delete 一直传 `ariaLabel`，但此前只有
+  `iconButton` 处理该参数、`button` 静默丢弃——读屏软件只能念出「↑」这类
+  符号字符。此缺陷由本轮新增的页面级集成冒烟（真实 render 后按
+  `button[aria-label="Edit"]` 定位）暴露并修复。
+- **破坏性确认框可被误点遮罩关闭**（`ui.confirm`）
+  删除目标这类危险确认此前的遮罩点击与普通确认无异——误点遮罩等于误确认。
+  现在 `danger: true` 时 `maskClose` 默认 false，只保留取消 / 关闭按钮 / Esc
+  三条明确退出路径。
+- **设置页下拉兜底项漏译**（`settings.js` 的 `enumControl`）
+  未知当前值的兜底文案硬编码中文「（当前）」，英文界面下显示中文。统一走
+  `ui.selectInput` 的 `(current)` 后自动获得 po 翻译（zh_Hans：「（当前值）」）。
+- **总览页首屏卡片区空白**（`overview.js`）
+  `getStatus` 未返回数据时卡片区什么都不显示，用户分不清「在加载」还是「没数据」。
+  现在显示带旋转指示器的加载占位，与 `emptyState` 的「无数据」灰色空态语义区分。
+
+### 验证
+
+| # | 验证项 | 结果 |
+|---|---|---|
+| 1 | 守护进程单元测试 | 136 通过 / 0 失败（不变） |
+| 2 | 前端防护与生命周期 + 设计系统 | **291 通过 / 0 失败**（原 79，新增 212） |
+| 3 | 图标与视图断言 | 437 通过 / 0 失败（不变） |
+| 4 | ucode 语法近似校验 | 通过 |
+| 5 | 全部 JS 文件 `node --check` | 通过 |
+| 6 | 翻译漂移审计 | 186 条，untranslated 0（新增 Loading… / Refreshing） |
+| 7 | CSS 花括号平衡 | 593 / 593 |
+| 8 | 测试可重复执行 | 连跑 3 次结果一致 |
+
+新增断言覆盖：九个控件工厂的结构与关联关系（label[for] / aria-describedby /
+aria-invalid / role=switch / radiogroup / aria-pressed）、弹窗模态语义
+（aria、挂载、rAF is-open、close 幂等、onBeforeClose 拦截、Esc、onOk Promise
+的 busy → resolve 关闭 / reject 保持）、确认框危险语义、面板形态、浮层结构与
+点项关闭、通知三规则（去重 / 上限 4 / 手动关闭）、进度终态与假进度禁止、
+源码级单一来源（无页面自建控件、makeSelect 只许转调、无旧类名、matchMedia
+唯一 768px）、CSS 类与 Token 齐备、po 新文案入模版与译文，以及页面级集成
+冒烟（targets 真实 render → 点行内编辑 → 弹窗挂载 → 控件回填 → label[for]
+关联 → 清空名称触发字段级校验失败 → 合法提交走 onOk Promise 自动关闭并写入
+UCI 会话；history 工具栏控件与标签关联抽查）。
+
+**未完成的验证项**（本环境无 OpenWrt SDK 与实机，仅静态审查）：
+
+- OpenWrt / ImmortalWrt SDK 实际构建（ipk / apk 两种格式）。
+- 实机上七页的触控 / 键盘 / 读屏行为（断言覆盖结构语义，实机手感需人工确认）。
+- 窄屏底部面板形态的 safe-area 表现（需真机浏览器）。
+
 ## [1.5.9] - 2026-10-25
 
 本版源自一次全量代码审查，修复项均**先复现、再修复、最后补测试**；
